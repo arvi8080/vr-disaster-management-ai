@@ -8,6 +8,12 @@
 .env.production.local
 *.env
 
+
+# Firebase credentials
+firebase-service-account.json
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+
 # ==========================================
 # OS & Editor Files
 # ==========================================
