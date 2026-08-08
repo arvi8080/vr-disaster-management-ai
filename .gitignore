@@ -127,3 +127,18 @@ sysinfo.txt
 dist/
 build/
 scratch/
+
+
+
+
+# Firebase secrets
+firebase-service-account.json
+backend/firebase-service-account.json
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Node dependencies
+node_modules/
