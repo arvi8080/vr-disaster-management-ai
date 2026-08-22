@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ==========================================
 # Environment & Secret Files
 # ==========================================
@@ -142,3 +143,6 @@ backend/firebase-service-account.json
 
 # Node dependencies
 node_modules/
+=======
+node_modules
+>>>>>>> 885e571 (Add frontend application)

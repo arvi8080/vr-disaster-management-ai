@@ -1,0 +1,1 @@
+export default function SkillTwinCard(){return null}
