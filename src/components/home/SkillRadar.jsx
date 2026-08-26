@@ -1,1 +1,0 @@
-import SkillRadar from '../skill-twin/SkillRadar'; export default SkillRadar
