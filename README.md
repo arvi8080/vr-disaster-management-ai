@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+# vr-disaster-management-ai
+AI-powered VR platform for disaster management training with Digital Skill Twins and personalized performance feedback.
+=======
 # VR Disaster Management & Training Platform - Frontend
 
 Modern React-based frontend for a real-world **VR Disaster Management and Training Platform Using Digital Skill Twins with AI-Driven Feedback**.
@@ -646,3 +650,4 @@ Frontend Status: 🚧 Active Development
 The frontend dashboard and responsive interface are currently under development.
 
 Backend APIs, AI services, and Unity VR training will be progressively integrated into the frontend.
+>>>>>>> 885e571 (Add frontend application)
