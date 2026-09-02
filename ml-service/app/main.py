@@ -19,7 +19,7 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {
-        "status": "online",
+        "status": "running",
         "service": "VR Disaster Management AI/ML Engine",
         "version": "1.0.0"
     }

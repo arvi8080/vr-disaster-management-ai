@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
 class TelemetryEventSchema(BaseModel):
-    timestamp: str
-    event_type: str
+    timestamp: str = ""
+    event_type: str = "general"
     hazard_type: Optional[str] = "General"
     reaction_time_ms: float = Field(default=500.0, ge=0.0)
     decision_correct: bool = True
@@ -11,9 +11,9 @@ class TelemetryEventSchema(BaseModel):
     safety_protocol_followed: bool = True
 
 class TrainingSessionInput(BaseModel):
-    user_id: str
-    scenario_id: str
-    scenario_name: str
+    user_id: str = "trainee-01"
+    scenario_id: str = "SESS-01"
+    scenario_name: str = "Disaster Response Simulation"
     duration_seconds: float = Field(default=600.0, ge=0.0)
     telemetry_events: List[TelemetryEventSchema] = []
     hazards_avoided: int = 5
@@ -23,7 +23,7 @@ class TrainingSessionInput(BaseModel):
 
 class PredictionResponse(BaseModel):
     predicted_score: float
-    performance_category: str  # EXCELLENT, PASSED, NEEDS_IMPROVEMENT, CRITICAL_FAIL
+    performance_category: str
     pass_probability: float
     risk_assessment: str
     recommended_focus_area: str
@@ -48,3 +48,29 @@ class SkillAnalysisResponse(BaseModel):
     strengths: List[str]
     weaknesses: List[str]
     ai_recommendations: List[str]
+
+class PerformanceFeatures(BaseModel):
+    evacuationTime: float = 0
+    averageReactionTime: float = 5.0
+    wrongDecisions: int = 0
+    correctDecisions: int = 0
+    safetyViolations: int = 0
+    hazardsDetected: int = 0
+    hazardsIgnored: int = 0
+    victimsRescued: int = 0
+    objectivesCompleted: int = 0
+
+class AnalyzeRequest(BaseModel):
+    traineeId: Optional[str] = "trainee-01"
+    sessionId: Optional[str] = "session-01"
+    currentSkills: Dict[str, Any] = Field(default_factory=dict)
+    performanceFeatures: Optional[PerformanceFeatures] = Field(default_factory=PerformanceFeatures)
+
+class AnalyzeResponse(BaseModel):
+    performanceScore: float
+    riskLevel: str
+    strengths: List[str]
+    weaknesses: List[str]
+    recommendations: List[str]
+    skillPredictions: Dict[str, float]
+    modelVersion: str
