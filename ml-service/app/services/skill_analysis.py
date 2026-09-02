@@ -4,7 +4,6 @@ def analyze_digital_skill_twin(input_data: SkillAnalysisInput) -> SkillAnalysisR
     sessions = input_data.historical_sessions
 
     if not sessions:
-        # Default baseline skill twin metrics
         metrics = SkillTwinMetrics(
             reflexes=88.0,
             tactical_awareness=92.5,
@@ -58,3 +57,34 @@ def analyze_digital_skill_twin(input_data: SkillAnalysisInput) -> SkillAnalysisR
         weaknesses=weaknesses,
         ai_recommendations=recommendations
     )
+
+def calculate_skills(features):
+    correct = getattr(features, "correctDecisions", 8)
+    wrong = getattr(features, "wrongDecisions", 1)
+    total_decisions = correct + wrong
+    decision_accuracy = round((correct / total_decisions) * 100) if total_decisions > 0 else 100
+
+    decision_making = max(0, min(100, decision_accuracy - (wrong * 5 if wrong > 2 else 0)))
+    situational_awareness = max(0, min(100, 60 + (getattr(features, "hazardsDetected", 5) * 10) - (getattr(features, "hazardsIgnored", 0) * 15)))
+    safety_awareness = max(0, min(100, 100 - (getattr(features, "safetyViolations", 0) * 20)))
+    evacuation_skill = max(0, min(100, 85 + (15 if 0 < getattr(features, "evacuationTime", 120) < 180 else (-15 if getattr(features, "evacuationTime", 120) > 300 else 0))))
+    emergency_response = max(0, min(100, 50 + (getattr(features, "victimsRescued", 3) * 20) + (getattr(features, "objectivesCompleted", 4) * 10)))
+
+    skills = {
+        "decisionMaking": decision_making,
+        "situationalAwareness": situational_awareness,
+        "safetyAwareness": safety_awareness,
+        "evacuationSkill": evacuation_skill,
+        "emergencyResponse": emergency_response,
+        "communication": 85,
+        "teamwork": 90,
+    }
+    overall_score = round(sum(skills.values()) / len(skills))
+    return skills, overall_score
+
+def generate_analysis(skills, score, features):
+    strengths = [k for k, v in skills.items() if v >= 75]
+    weaknesses = [k for k, v in skills.items() if v < 50]
+    recommendations = ["Maintain continuous hazard scanning and protocol compliance."]
+    risk_level = "LOW" if score >= 80 else ("MEDIUM" if score >= 60 else "HIGH")
+    return risk_level, strengths, weaknesses, recommendations
