@@ -1,7 +1,7 @@
 const ROLES = {
-    TRAINEE: "trainee",
-    TRAINER: "trainer",
-    ADMIN: "admin"
+  TRAINEE: "trainee",
+  TRAINER: "trainer",
+  ADMIN: "admin"
 };
 
 const DISASTER_TYPES = [
@@ -87,3 +87,4 @@ module.exports = {
     SKILL_UPDATE_WEIGHTS,
     TRENDS
 };
+

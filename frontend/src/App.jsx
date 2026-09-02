@@ -3,15 +3,19 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AppShell from "./components/layout/AppShell";
 
-// Login
+// Login & Register
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 // Main pages
 import Dashboard from "./pages/Dashboard";
 import Simulations from "./pages/Simulations";
 import DisasterMap from "./pages/DisasterMap";
 import Training from "./pages/Training";
+import TrainingHistory from "./pages/TrainingHistory";
 import SkillTwin from "./pages/SkillTwin";
+import TraineeProfile from "./pages/TraineeProfile";
+import TrainerDashboard from "./pages/TrainerDashboard";
 import Analytics from "./pages/Analytics";
 import Alerts from "./pages/Alerts";
 import Resources from "./pages/Resources";
@@ -26,23 +30,17 @@ export default function App() {
       <Routes>
 
         {/* ==================================================
-            LOGIN
-            User + Admin both enter through this page
+            AUTH ROUTES
         ================================================== */}
 
-        <Route
-          path="/login"
-          element={<Login />}
-        />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
         {/* ==================================================
             MAIN APPLICATION
         ================================================== */}
 
-        <Route
-          path="/"
-          element={<Navigate to="/login" replace />}
-        />
+        <Route path="/" element={<Navigate to="/login" replace />} />
 
         <Route
           path="/dashboard"
@@ -81,10 +79,37 @@ export default function App() {
         />
 
         <Route
+          path="/training-history"
+          element={
+            <AppShell>
+              <TrainingHistory />
+            </AppShell>
+          }
+        />
+
+        <Route
           path="/skill-twin"
           element={
             <AppShell>
               <SkillTwin />
+            </AppShell>
+          }
+        />
+
+        <Route
+          path="/trainee-profile"
+          element={
+            <AppShell>
+              <TraineeProfile />
+            </AppShell>
+          }
+        />
+
+        <Route
+          path="/trainer-dashboard"
+          element={
+            <AppShell>
+              <TrainerDashboard />
             </AppShell>
           }
         />
@@ -185,10 +210,7 @@ export default function App() {
             UNKNOWN ROUTE
         ================================================== */}
 
-        <Route
-          path="*"
-          element={<Navigate to="/login" replace />}
-        />
+        <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>
     </BrowserRouter>

@@ -198,3 +198,4 @@ class TrainingService {
 }
 
 module.exports = new TrainingService();
+

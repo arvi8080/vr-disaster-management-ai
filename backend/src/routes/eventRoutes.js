@@ -11,3 +11,4 @@ router.post("/events", validate(validateEvent), eventController.addEvent.bind(ev
 router.get("/sessions/:sessionId/events", eventController.getSessionEvents.bind(eventController));
 
 module.exports = router;
+

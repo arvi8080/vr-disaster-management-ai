@@ -9,7 +9,10 @@ import {
   Package,
   BarChart3,
   GraduationCap,
+  History,
   Brain,
+  UserCheck,
+  UserCog,
   Settings,
   ShieldAlert,
   X,
@@ -24,7 +27,10 @@ const nav = [
   ["/resources", "Resource Management", Package],
   ["/analytics", "Analytics & Reports", BarChart3],
   ["/training", "Training & Courses", GraduationCap],
+  ["/training-history", "Training History", History],
   ["/skill-twin", "Digital Skill Twin", Brain],
+  ["/trainee-profile", "Trainee Profile", UserCheck],
+  ["/trainer-dashboard", "Trainer Control", UserCog],
   ["/settings", "Settings", Settings],
 ];
 

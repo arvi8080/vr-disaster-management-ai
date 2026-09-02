@@ -62,3 +62,4 @@ class ScenarioController {
 }
 
 module.exports = new ScenarioController();
+

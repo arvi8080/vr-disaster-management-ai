@@ -21,3 +21,4 @@ function validateUpdateProfile(req) {
 module.exports = {
     validateUpdateProfile
 };
+

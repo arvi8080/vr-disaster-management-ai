@@ -11,3 +11,4 @@ function validateCreateSession(req) {
 module.exports = {
     validateCreateSession
 };
+

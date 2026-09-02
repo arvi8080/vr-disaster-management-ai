@@ -16,3 +16,4 @@ router.put("/:uid", validate(validateUpdateProfile), userController.updateProfil
 router.delete("/:uid", authorizeRoles(ROLES.ADMIN), userController.deleteUser.bind(userController));
 
 module.exports = router;
+

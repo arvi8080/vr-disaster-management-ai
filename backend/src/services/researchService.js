@@ -72,3 +72,4 @@ class ResearchService {
 }
 
 module.exports = new ResearchService();
+

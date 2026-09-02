@@ -13,3 +13,4 @@ class ResearchController {
 }
 
 module.exports = new ResearchController();
+

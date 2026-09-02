@@ -11,3 +11,4 @@ router.get("/users", adminController.getUsers.bind(adminController));
 router.get("/stats", adminController.getSystemStats.bind(adminController));
 
 module.exports = router;
+
