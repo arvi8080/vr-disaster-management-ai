@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import numpy as np
 import pandas as pd
 import pickle
@@ -24,9 +23,21 @@ class DisasterPerformanceModel:
                 print(f"Warning: Could not load pickled model ({e}). Using algorithmic predictor.")
         return None
 
-    def predict(self, duration_sec: float, hazards_avoided: int, total_hazards: int,
-                casualties_rescued: int, protocol_violations: int, avg_reaction_time_ms: float, avg_stress: float):
+    def predict(self, duration_sec: float = 300, hazards_avoided: int = 5, total_hazards: int = 5,
+                casualties_rescued: int = 3, protocol_violations: int = 0, avg_reaction_time_ms: float = 450.0, avg_stress: float = 0.25):
         
+        # Check if duration_sec is actually a feature list [evacuationTime, averageReactionTime, wrongDecisions, correctDecisions...]
+        if isinstance(duration_sec, (list, tuple)):
+            features = duration_sec
+            duration_sec = features[0] if len(features) > 0 else 300
+            avg_reaction_time_ms = features[1] if len(features) > 1 else 450.0
+            wrong = features[2] if len(features) > 2 else 0
+            correct = features[3] if len(features) > 3 else 5
+            hazards_avoided = correct
+            total_hazards = correct + wrong
+            protocol_violations = features[4] if len(features) > 4 else 0
+            casualties_rescued = features[7] if len(features) > 7 else 3
+
         hazard_rate = hazards_avoided / max(total_hazards, 1)
         rescue_rate = min(casualties_rescued / 3.0, 1.0)
         protocol_rate = max(1.0 - (protocol_violations * 0.2), 0.0)
@@ -35,7 +46,6 @@ class DisasterPerformanceModel:
 
         if self.model is not None:
             try:
-                # Features: ['evacuation_time', 'avg_reaction_time', 'correct_decisions', 'wrong_decisions', 'safety_violations', 'hazards_detected', 'victims_rescued', 'objectives_completed']
                 features_df = pd.DataFrame([{
                     'evacuation_time': duration_sec,
                     'avg_reaction_time': avg_reaction_time_ms,
@@ -49,7 +59,6 @@ class DisasterPerformanceModel:
                 raw_pred = self.model.predict(features_df)[0]
                 score = float(np.clip(raw_pred, 0.0, 100.0))
             except Exception as err:
-                print(f"Inference warning, using feature calculation: {err}")
                 base_score = (hazard_rate * 35.0) + (rescue_rate * 25.0) + (protocol_rate * 20.0) + (speed_factor * 10.0) + (stress_resilience * 10.0)
                 score = float(np.clip(base_score, 0.0, 100.0))
         else:
@@ -91,48 +100,4 @@ class DisasterPerformanceModel:
         }
 
 predictor = DisasterPerformanceModel()
-=======
-import os
-import joblib
-
-
-BASE_DIR = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
-    )
-)
-
-MODEL_PATH = os.path.join(
-    BASE_DIR,
-    "models",
-    "xgboost_model.pkl"
-)
-
-
-class XGBoostModel:
-
-    def __init__(self):
-        self.model = None
-        self.load_model()
-
-    def load_model(self):
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(
-                f"XGBoost model not found at: {MODEL_PATH}"
-            )
-
-        self.model = joblib.load(MODEL_PATH)
-
-        print(
-            f"XGBoost model loaded successfully from: {MODEL_PATH}"
-        )
-
-    def predict(self, features):
-        prediction = self.model.predict([features])
-        return float(prediction[0])
-
-
-xgboost_model = XGBoostModel()
->>>>>>> remotes/origin/ai
+xgboost_model = predictor
