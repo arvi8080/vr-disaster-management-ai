@@ -14,3 +14,4 @@ function validate(validatorFn) {
 module.exports = {
     validate
 };
+

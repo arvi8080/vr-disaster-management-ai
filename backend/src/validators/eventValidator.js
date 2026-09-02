@@ -25,3 +25,4 @@ function validateEvent(req) {
 module.exports = {
     validateEvent
 };
+

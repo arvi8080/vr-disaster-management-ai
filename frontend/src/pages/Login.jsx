@@ -1,3 +1,5 @@
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../config/firebase";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -32,23 +34,55 @@ export default function Login() {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
+  const handleLogin = async (e) => {
+  e.preventDefault();
 
-    /*
-      Temporary frontend navigation.
+  try {
+    // 1. Login with Firebase
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
 
-      Later we will replace this with:
-      Firebase / Backend authentication
-      + role verification.
-    */
+    const user = userCredential.user;
 
-    if (role === "admin") {
-      navigate("/admin");
-    } else {
-      navigate("/dashboard");
+    // 2. Get Firebase ID token
+    const token = await user.getIdToken();
+
+    // 3. Send token to backend
+    const response = await fetch("http://localhost:5000/api/auth/me", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    console.log("Backend user:", data);
+
+    // Check backend response
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to authenticate with backend");
     }
-  };
+
+    // 4. Role-based navigation
+    const userRole = data.data.role;
+
+if (userRole === "admin") {
+  navigate("/admin");
+} else if (userRole === "trainer") {
+  navigate("/dashboard");
+} else {
+  navigate("/dashboard");
+}
+
+  } catch (error) {
+    console.error("Login error:", error);
+    alert("Login failed: " + error.message);
+  }
+};
 
   return (
     <div className="login3d">

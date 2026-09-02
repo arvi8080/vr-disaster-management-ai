@@ -12,3 +12,4 @@ router.get("/trainer", authorizeRoles(ROLES.TRAINER, ROLES.ADMIN), dashboardCont
 router.get("/admin", authorizeRoles(ROLES.ADMIN), dashboardController.getAdminDashboard.bind(dashboardController));
 
 module.exports = router;
+

@@ -73,3 +73,4 @@ class TrainingController {
 }
 
 module.exports = new TrainingController();
+

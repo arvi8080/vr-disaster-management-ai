@@ -8,3 +8,4 @@ router.use(authMiddleware);
 router.get("/metrics", researchController.getMetrics.bind(researchController));
 
 module.exports = router;
+

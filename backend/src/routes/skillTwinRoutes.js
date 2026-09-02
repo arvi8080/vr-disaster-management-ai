@@ -13,3 +13,4 @@ router.get("/:traineeId/history", skillTwinController.getHistory.bind(skillTwinC
 router.post("/:traineeId/recalculate", skillTwinController.recalculate.bind(skillTwinController));
 
 module.exports = router;
+

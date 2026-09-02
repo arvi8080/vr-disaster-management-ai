@@ -1,0 +1,921 @@
+/* =========================================================
+   VR DISASTER MANAGEMENT - ADMIN COMMAND DASHBOARD STYLES
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   1. MAIN PAGE LAYOUT & CONTAINER
+   --------------------------------------------------------- */
+.admin-page {
+  position: relative;
+  width: 100%;
+  min-height: calc(100vh - var(--topbar-height, 68px));
+  padding: 24px 20px 48px;
+  color: var(--text, #f4f7ff);
+  overflow-x: hidden;
+  background: var(--bg, #050916);
+  box-sizing: border-box;
+}
+
+.admin-content {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 1500px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---------------------------------------------------------
+   2. 3D BACKGROUND ENVIRONMENT & TACTICAL GRAPHICS
+   --------------------------------------------------------- */
+.admin-3d-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+  perspective: 1000px;
+}
+
+/* Grid Floor Projection */
+.admin-grid-floor {
+  position: absolute;
+  bottom: -35%;
+  left: -20%;
+  right: -20%;
+  height: 85%;
+  transform: perspective(600px) rotateX(75deg);
+  background-image: 
+    linear-gradient(rgba(49, 214, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 214, 255, 0.08) 1px, transparent 1px);
+  background-size: 45px 45px;
+  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, transparent 75%);
+  animation: gridMove 25s linear infinite;
+}
+
+/* Ambient Glow Orbs */
+.admin-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+}
+
+.glow-one {
+  top: -10%;
+  right: 5%;
+  width: 550px;
+  height: 550px;
+  background: radial-gradient(circle, rgba(105, 70, 255, 0.4), transparent 70%);
+}
+
+.glow-two {
+  bottom: 5%;
+  left: -5%;
+  width: 650px;
+  height: 650px;
+  background: radial-gradient(circle, rgba(49, 214, 255, 0.25), transparent 70%);
+}
+
+/* Floating Particles */
+.admin-particles {
+  position: absolute;
+  inset: 0;
+}
+
+.admin-particles span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: rgba(49, 214, 255, 0.65);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(49, 214, 255, 0.8);
+  animation: adminParticleFloat 9s infinite ease-in-out;
+}
+
+.admin-particles span:nth-child(1) { left: 8%; top: 15%; animation-duration: 8s; }
+.admin-particles span:nth-child(2) { left: 18%; top: 65%; animation-duration: 11s; animation-delay: -2s; }
+.admin-particles span:nth-child(3) { left: 28%; top: 30%; animation-duration: 9s; animation-delay: -4s; }
+.admin-particles span:nth-child(4) { left: 38%; top: 80%; animation-duration: 12s; animation-delay: -1s; }
+.admin-particles span:nth-child(5) { left: 48%; top: 22%; animation-duration: 7s; animation-delay: -3s; }
+.admin-particles span:nth-child(6) { left: 58%; top: 58%; animation-duration: 10s; animation-delay: -5s; }
+.admin-particles span:nth-child(7) { left: 68%; top: 12%; animation-duration: 8s; animation-delay: -2s; }
+.admin-particles span:nth-child(8) { left: 78%; top: 72%; animation-duration: 11s; animation-delay: -6s; }
+.admin-particles span:nth-child(9) { left: 88%; top: 38%; animation-duration: 9s; animation-delay: -1s; }
+.admin-particles span:nth-child(10) { left: 95%; top: 85%; animation-duration: 13s; animation-delay: -4s; }
+.admin-particles span:nth-child(n+11) {
+  left: calc((var(--i, 11) * 7.5%) + 3%);
+  top: calc((var(--i, 11) * 6.5%) + 5%);
+  animation-duration: 10s;
+  animation-delay: -3s;
+}
+
+/* Background Tactical Radar HUD */
+.admin-radar {
+  position: absolute;
+  top: 30px;
+  right: 4%;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  border: 1px dashed rgba(49, 214, 255, 0.2);
+  opacity: 0.5;
+}
+
+.radar-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(49, 214, 255, 0.18);
+}
+
+.ring-one { width: 33%; height: 33%; }
+.ring-two { width: 66%; height: 66%; }
+.ring-three { width: 100%; height: 100%; }
+
+.radar-cross {
+  position: absolute;
+  background: rgba(49, 214, 255, 0.15);
+}
+
+.radar-cross.horizontal {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.radar-cross.vertical {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.radar-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 50%;
+  transform-origin: 0% 0%;
+  background: conic-gradient(from 0deg, rgba(49, 214, 255, 0.4) 0deg, transparent 60deg);
+  border-radius: 0 100% 0 0;
+  animation: radarScan 4s linear infinite;
+}
+
+.radar-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4d57;
+  box-shadow: 0 0 10px #ff4d57;
+  animation: pulseDot 1.8s infinite alternate;
+}
+
+.dot-one { top: 28%; left: 62%; }
+.dot-two { top: 68%; left: 32%; }
+.dot-three { top: 52%; left: 82%; background: #31d6ff; box-shadow: 0 0 10px #31d6ff; }
+
+/* Background 3D Wireframe Globe */
+.admin-globe {
+  position: absolute;
+  bottom: 40px;
+  left: 2%;
+  width: 240px;
+  height: 240px;
+  opacity: 0.3;
+}
+
+.globe-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 1px solid rgba(105, 70, 255, 0.35);
+  position: relative;
+  box-shadow: inset 0 0 45px rgba(105, 70, 255, 0.2);
+  animation: globeRotate 18s linear infinite;
+}
+
+.globe-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(105, 70, 255, 0.25);
+}
+
+.line-one { width: 100%; height: 45%; }
+.line-two { width: 45%; height: 100%; }
+.line-three { width: 85%; height: 85%; transform: translate(-50%, -50%) rotate(45deg); }
+
+.hazard-point {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9d2e;
+  box-shadow: 0 0 12px #ff9d2e;
+  animation: pulseDot 2s infinite alternate;
+}
+
+.hp-one { top: 22%; left: 38%; }
+.hp-two { top: 58%; left: 68%; background: #ff4d57; box-shadow: 0 0 12px #ff4d57; }
+.hp-three { top: 72%; left: 28%; }
+
+/* ---------------------------------------------------------
+   3. COMMAND HEADER & SYSTEM STATUS BADGES
+   --------------------------------------------------------- */
+.admin-command-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(15, 27, 48, 0.92), rgba(7, 14, 27, 0.96));
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.12));
+  border-radius: 18px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow, 0 24px 70px rgba(0, 0, 0, 0.3));
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-command-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #31d6ff, #6946ff, transparent);
+}
+
+.admin-system-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--cyan, #31d6ff);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  background: rgba(49, 214, 255, 0.08);
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(49, 214, 255, 0.22);
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  background: #36d98a;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #36d98a;
+  animation: livePulse 1.5s infinite;
+}
+
+.admin-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  background: rgba(54, 217, 138, 0.1);
+  border: 1px solid rgba(54, 217, 138, 0.3);
+  border-radius: 30px;
+  color: #36d98a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  box-shadow: 0 0 20px rgba(54, 217, 138, 0.15);
+  transition: all 0.25s ease;
+}
+
+.admin-live-status:hover {
+  background: rgba(54, 217, 138, 0.18);
+  border-color: rgba(54, 217, 138, 0.5);
+  box-shadow: 0 0 25px rgba(54, 217, 138, 0.3);
+}
+
+.admin-live-status svg {
+  animation: livePulse 1.8s infinite;
+}
+
+/* ---------------------------------------------------------
+   4. SYSTEM COMMAND STATUS CARDS
+   --------------------------------------------------------- */
+.admin-command-status {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.admin-command-status > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(145deg, rgba(15, 27, 48, 0.85), rgba(7, 14, 27, 0.92));
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.12));
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.admin-command-status > div:hover {
+  transform: translateY(-3px);
+  border-color: rgba(49, 214, 255, 0.4);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.admin-command-status svg {
+  color: var(--cyan, #31d6ff);
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 10px;
+  box-sizing: content-box;
+  background: rgba(49, 214, 255, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(49, 214, 255, 0.22);
+}
+
+.admin-command-status span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--muted, #8d9ab3);
+}
+
+.admin-command-status b {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #f4f7ff;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------
+   5. ANALYTICS & STAT CARDS
+   --------------------------------------------------------- */
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.admin-stat-card {
+  position: relative;
+  background: linear-gradient(145deg, rgba(15, 27, 48, 0.92), rgba(7, 14, 27, 0.96));
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.12));
+  border-radius: 18px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow, 0 24px 70px rgba(0, 0, 0, 0.3));
+  overflow: hidden;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.admin-stat-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(105, 70, 255, 0.45);
+  box-shadow: 0 16px 45px rgba(105, 70, 255, 0.18);
+}
+
+/* Danger Variant */
+.admin-stat-card.danger {
+  border-color: rgba(255, 77, 87, 0.35);
+}
+
+.admin-stat-card.danger:hover {
+  border-color: rgba(255, 77, 87, 0.65);
+  box-shadow: 0 16px 45px rgba(255, 77, 87, 0.2);
+}
+
+.admin-stat-card.danger .admin-stat-icon {
+  background: rgba(255, 77, 87, 0.12);
+  color: #ff4d57;
+  border-color: rgba(255, 77, 87, 0.3);
+}
+
+.admin-stat-card.danger .stat-line span {
+  background: linear-gradient(90deg, #ff4d57, #ff9d2e);
+}
+
+/* Warning Variant */
+.admin-stat-card.warning {
+  border-color: rgba(255, 157, 46, 0.35);
+}
+
+.admin-stat-card.warning:hover {
+  border-color: rgba(255, 157, 46, 0.65);
+  box-shadow: 0 16px 45px rgba(255, 157, 46, 0.2);
+}
+
+.admin-stat-card.warning .admin-stat-icon {
+  background: rgba(255, 157, 46, 0.12);
+  color: #ff9d2e;
+  border-color: rgba(255, 157, 46, 0.3);
+}
+
+.admin-stat-card.warning .stat-line span {
+  background: linear-gradient(90deg, #ff9d2e, #ffc107);
+}
+
+/* Card Header */
+.admin-stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.admin-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(105, 70, 255, 0.12);
+  color: #8b5cf6;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(105, 70, 255, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.admin-stat-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.admin-stat-top span {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--muted, #8d9ab3);
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.08);
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* Card Values & Titles */
+.admin-stat-value {
+  font-size: 36px;
+  font-weight: 800;
+  color: #f4f7ff;
+  line-height: 1;
+  margin-top: 8px;
+  letter-spacing: -1px;
+}
+
+.admin-stat-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: #f4f7ff;
+}
+
+.admin-stat-card p {
+  font-size: 12px;
+  color: var(--muted, #8d9ab3);
+  margin: 0;
+}
+
+.stat-line {
+  width: 100%;
+  height: 3px;
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.stat-line span {
+  display: block;
+  height: 100%;
+  width: 75%;
+  background: linear-gradient(90deg, #6946ff, #31d6ff);
+  border-radius: 3px;
+}
+
+/* ---------------------------------------------------------
+   6. LOWER COMMAND CENTER GRID & LIVE DISASTER MONITORING
+   --------------------------------------------------------- */
+.admin-command-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+}
+
+.monitor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+}
+
+.monitor-map {
+  position: relative;
+  height: 300px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #07101e 0%, #030812 100%);
+  border: 1px solid rgba(49, 214, 255, 0.22);
+  overflow: hidden;
+  box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.7);
+}
+
+.map-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(49, 214, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 214, 255, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.map-radar {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 1px solid rgba(49, 214, 255, 0.25);
+}
+
+.map-radar-ring {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  border: 1px dashed rgba(49, 214, 255, 0.3);
+}
+
+.map-radar-ring.ring-small {
+  inset: 55px;
+  border-style: solid;
+}
+
+.map-scan {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(49, 214, 255, 0.35) 0deg, transparent 60deg);
+  animation: radarScan 3.5s linear infinite;
+}
+
+.map-point {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 14px currentColor;
+  animation: pulsePoint 1.6s infinite alternate;
+}
+
+.map-point-one {
+  top: 35%;
+  left: 38%;
+  color: #ff4d57;
+  background: #ff4d57;
+}
+
+.map-point-two {
+  top: 62%;
+  left: 68%;
+  color: #ff9d2e;
+  background: #ff9d2e;
+}
+
+.map-point-three {
+  top: 75%;
+  left: 28%;
+  color: #36d98a;
+  background: #36d98a;
+}
+
+.map-label {
+  position: absolute;
+  padding: 4px 9px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border-radius: 4px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.label-one {
+  top: 24%;
+  left: 40%;
+  color: #ff4d57;
+  background: rgba(255, 77, 87, 0.15);
+  border-color: rgba(255, 77, 87, 0.45);
+}
+
+.label-two {
+  top: 51%;
+  left: 67%;
+  color: #ff9d2e;
+  background: rgba(255, 157, 46, 0.15);
+  border-color: rgba(255, 157, 46, 0.45);
+}
+
+.monitor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: rgba(7, 14, 27, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--muted, #8d9ab3);
+}
+
+.monitor-footer span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #31d6ff;
+  font-weight: 700;
+}
+
+.monitor-footer i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #31d6ff;
+  box-shadow: 0 0 8px #31d6ff;
+  animation: livePulse 1.2s infinite alternate;
+}
+
+/* ---------------------------------------------------------
+   7. SYSTEM ACTIVITY FEED
+   --------------------------------------------------------- */
+.system-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: rgba(13, 23, 41, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 14px;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.activity-item:hover {
+  background: rgba(13, 23, 41, 0.95);
+  border-color: rgba(105, 70, 255, 0.35);
+  transform: translateX(4px);
+}
+
+.activity-item.activity-warning {
+  border-color: rgba(255, 157, 46, 0.28);
+  background: rgba(255, 157, 46, 0.06);
+}
+
+.activity-item.activity-warning:hover {
+  border-color: rgba(255, 157, 46, 0.5);
+  background: rgba(255, 157, 46, 0.12);
+}
+
+.activity-item.activity-warning .activity-icon {
+  background: rgba(255, 157, 46, 0.15);
+  color: #ff9d2e;
+  border-color: rgba(255, 157, 46, 0.3);
+}
+
+.activity-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(49, 214, 255, 0.1);
+  color: #31d6ff;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(49, 214, 255, 0.22);
+  flex-shrink: 0;
+}
+
+.activity-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.activity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-info strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4f7ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-info span {
+  font-size: 11px;
+  color: var(--muted, #8d9ab3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-item time {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--muted, #8d9ab3);
+  background: rgba(148, 163, 184, 0.08);
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------
+   8. KEYFRAME ANIMATIONS
+   --------------------------------------------------------- */
+@keyframes gridMove {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 45px;
+  }
+}
+
+@keyframes radarScan {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseDot {
+  from {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+@keyframes pulsePoint {
+  from {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.6;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 1;
+  }
+}
+
+@keyframes livePulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes globeRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes adminParticleFloat {
+  0%, 100% {
+    transform: translateY(0) translateX(0);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-30px) translateX(15px);
+    opacity: 0.85;
+  }
+}
+
+/* ---------------------------------------------------------
+   9. RESPONSIVE DESIGN BREAKPOINTS
+   --------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-command-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-radar {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 16px 12px 36px;
+  }
+
+  .admin-command-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .admin-command-status {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .monitor-map {
+    height: 240px;
+  }
+
+  .admin-globe {
+    display: none;
+  }
+
+  .monitor-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-stat-value {
+    font-size: 30px;
+  }
+
+  .admin-command-header {
+    padding: 14px;
+  }
+
+  .admin-system-label {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .activity-item {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+}

@@ -15,3 +15,4 @@ router.post("/sessions/:id/complete", trainingController.completeSession.bind(tr
 router.post("/sessions/:id/cancel", trainingController.cancelSession.bind(trainingController));
 
 module.exports = router;
+
