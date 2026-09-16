@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
@@ -216,3 +217,36 @@ export default function App() {
     </BrowserRouter>
   );
 }
+=======
+import React, { useState } from 'react';
+import Background3D from './components/Background3D';
+import Auth from './components/Auth';
+import StudentDashboard from './components/StudentDashboard';
+import AdminDashboard from './components/AdminDashboard';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+  };
+
+  return (
+    <div className="relative min-h-screen bg-[#0a0910] text-slate-100 overflow-x-hidden">
+      <Background3D />
+
+      {!user ? (
+        <Auth onLogin={handleLogin} />
+      ) : user.role === 'admin' ? (
+        <AdminDashboard user={user} onLogout={handleLogout} />
+      ) : (
+        <StudentDashboard user={user} onLogout={handleLogout} />
+      )}
+    </div>
+  );
+}
+>>>>>>> Stashed changes
