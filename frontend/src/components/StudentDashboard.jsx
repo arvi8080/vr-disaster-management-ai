@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, ClipboardList, FileText, User as UserIcon, LogOut, Flame, Droplets, Wind, Play, ChevronRight, Shield, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, BookOpen, ClipboardList, FileText, User as UserIcon, LogOut, Flame, Droplets, Wind, Play, ChevronRight, Shield, Sparkles, Lock, Cpu } from 'lucide-react';
 import VRSimulatorModal from './VRSimulatorModal';
+import { fetchTraineeDashboard } from '../services/dashboardService';
+import { fetchScenarios } from '../services/scenarioService';
 
 export default function StudentDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeSimulation, setActiveSimulation] = useState(null);
+  const [liveMetrics, setLiveMetrics] = useState(null);
   const [reports, setReports] = useState([
     {
       title: 'Fire in Classroom',
@@ -21,53 +24,61 @@ export default function StudentDashboard({ user, onLogout }) {
       overall: 'Satisfactory',
       mistakes: 'Delayed barrier sealing',
       aiFeedback: 'Ensure faster deployment of flood gates in hallway zones.'
-    },
-    {
-      title: 'Earthquake Drill',
-      score: 65,
-      date: 'Completed on 02 Aug 2026 • 04:30 PM',
-      overall: 'Needs Improvement',
-      mistakes: 'Hesitation during drop and cover phase',
-      aiFeedback: 'Practice immediate drop under sturdy furniture during initial tremors.'
     }
   ]);
 
-  const [trainings, setTrainings] = useState([
-    {
-      id: 1,
-      title: 'Fire in Classroom',
-      description: 'Learn how to respond to fire incidents in a lab or classroom.',
-      progress: 60,
-      icon: Flame,
-      category: 'Fire Safety'
-    },
-    {
-      id: 2,
-      title: 'Flood in Building',
-      description: 'Train for indoor flooding and emergency evacuation procedures.',
-      progress: 0,
-      icon: Droplets,
-      category: 'Water Hazard'
-    },
-    {
-      id: 3,
-      title: 'Earthquake Drill',
-      description: 'Practice safe evacuation and essential actions during earthquakes.',
-      progress: 0,
-      icon: Wind,
-      category: 'Seismic Safety'
-    }
+  const [allScenarios, setAllScenarios] = useState([
+    { id: '1', title: 'Fire in Classroom', description: 'Learn how to respond to fire incidents in a lab or classroom.', progress: 60, icon: Flame, category: 'Fire Safety', type: 'fire' },
+    { id: '2', title: 'Flood in Building', description: 'Train for indoor flooding and emergency evacuation procedures.', progress: 0, icon: Droplets, category: 'Water Hazard', type: 'flood' },
+    { id: '3', title: 'Earthquake Drill', description: 'Practice safe evacuation and essential actions during earthquakes.', progress: 0, icon: Wind, category: 'Seismic Safety', type: 'earthquake' }
   ]);
 
-  const [assignments, setAssignments] = useState([
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [dashData, scenarioCatalog] = await Promise.all([
+          fetchTraineeDashboard(),
+          fetchScenarios()
+        ]);
+        if (dashData) setLiveMetrics(dashData);
+        if (scenarioCatalog && scenarioCatalog.length > 0) {
+          const mapped = scenarioCatalog.map((s, idx) => ({
+            id: s.id || `sc-${idx}`,
+            title: s.title,
+            description: s.description || 'VR disaster simulation module.',
+            progress: 0,
+            icon: s.disasterType === 'fire' ? Flame : s.disasterType === 'flood' ? Droplets : Wind,
+            category: s.category || s.disasterType?.toUpperCase() || 'Disaster Safety',
+            type: s.disasterType || 'fire'
+          }));
+          setAllScenarios(mapped);
+        }
+      } catch (err) {
+        console.warn("StudentDashboard live fetch error:", err);
+      }
+    }
+    loadData();
+  }, []);
+
+  const isScenarioAllowed = (type) => {
+    if (!user.allowedScenarios || user.allowedScenarios.includes('*')) return true;
+    return user.allowedScenarios.includes(type);
+  };
+
+  const [assignments] = useState([
     { title: 'Fire in Computer Lab', assignedBy: 'Admin', dueDate: '10 Sep 2026', status: 'Pending' },
-    { title: 'Flood in Office Building', assignedBy: 'Admin', dueDate: '15 Sep 2026', status: 'Pending' },
-    { title: 'Earthquake in Hostel', assignedBy: 'Admin', dueDate: '20 Sep 2026', status: 'Pending' }
+    { title: 'Flood in Office Building', assignedBy: 'Admin', dueDate: '15 Sep 2026', status: 'Pending' }
   ]);
 
   const handleSimulationComplete = (newReportData) => {
     setActiveSimulation(null);
-    setTrainings(trainings.map(t => t.title === newReportData.title ? { ...t, progress: 100 } : t));
+    setAllScenarios(
+  allScenarios.map(t =>
+    t.title === newReportData.title
+      ? { ...t, progress: 100 }
+      : t
+  )
+);
     setReports([
       {
         title: newReportData.title,
@@ -186,7 +197,7 @@ export default function StudentDashboard({ user, onLogout }) {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {trainings.map((t) => {
+                {allScenarios.filter(s => isScenarioAllowed(s.type)).map((t) => {
                     const Icon = t.icon;
                     return (
                       <div key={t.id} className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6 flex flex-col justify-between hover:border-purple-500/50 transition-all shadow-lg">
@@ -288,27 +299,46 @@ export default function StudentDashboard({ user, onLogout }) {
 
           {activeTab === 'trainings' && (
             <div>
-              <h2 className="text-2xl font-bold text-white mb-6">All VR Disaster Simulations</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">All VR Disaster Simulations</h2>
+              <p className="text-xs text-slate-400 mb-6">Access available scenarios or request permissions for locked modules from your Admin/Trainer.</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {trainings.map((t) => {
+                {allScenarios.map((t) => {
                   const Icon = t.icon;
+                  const allowed = isScenarioAllowed(t.type);
                   return (
-                    <div key={t.id} className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6 flex flex-col justify-between">
+                    <div key={t.id} className={`bg-[#13111c] border rounded-2xl p-6 flex flex-col justify-between transition-all ${allowed ? 'border-[#27213b] hover:border-purple-500/50' : 'border-[#27213b]/40 opacity-70'}`}>
                       <div>
-                        <div className="w-12 h-12 rounded-2xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
-                          <Icon className="w-6 h-6" />
+                        <div className="flex items-center justify-between mb-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${allowed ? 'bg-purple-600/10 border border-purple-500/20 text-purple-400' : 'bg-slate-800/40 text-slate-500'}`}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          {!allowed && (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                              <Lock className="w-3 h-3" /> Locked
+                            </span>
+                          )}
                         </div>
                         <span className="text-xs text-purple-400 font-semibold uppercase tracking-wider">{t.category}</span>
                         <h4 className="font-bold text-white text-lg mt-1 mb-2">{t.title}</h4>
                         <p className="text-xs text-slate-400 mb-6 leading-relaxed">{t.description}</p>
                       </div>
-                      <button
-                        onClick={() => setActiveSimulation(t)}
-                        className="w-full py-3 px-4 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30 flex items-center justify-center gap-2"
-                      >
-                        <Play className="w-4 h-4" />
-                        <span>Launch VR Simulation</span>
-                      </button>
+                      {allowed ? (
+                        <button
+                          onClick={() => setActiveSimulation(t)}
+                          className="w-full py-3 px-4 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30 flex items-center justify-center gap-2"
+                        >
+                          <Play className="w-4 h-4" />
+                          <span>Launch VR Simulation</span>
+                        </button>
+                      ) : (
+                        <button
+                          disabled
+                          className="w-full py-3 px-4 rounded-xl text-xs font-semibold bg-[#27213b]/40 text-slate-500 flex items-center justify-center gap-2 cursor-not-allowed"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Permission Required</span>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
