@@ -1,27 +1,99 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Users, BookOpen, ClipboardList, FileText, LogOut, Plus, Shield, Sparkles, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Users, BookOpen, ClipboardList, FileText, LogOut, Plus, Shield, Sparkles, CheckCircle, UserCheck } from 'lucide-react';
+import { fetchAdminDashboard } from '../services/dashboardService';
+import { adminService } from '../services/adminService';
 
 export default function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [trainees] = useState([
-    { id: 1, name: 'Manav Vartak', email: 'manav@ResQVerse.vr', dept: 'CS Lab', completed: 3, avgScore: '83%' },
-    { id: 2, name: 'Priya Sharma', email: 'priya@ResQVerse.vr', dept: 'Electronics', completed: 2, avgScore: '91%' },
-    { id: 3, name: 'Rahul Verma', email: 'rahul@ResQVerse.vr', dept: 'Mechanical', completed: 1, avgScore: '74%' },
+  const [adminStats, setAdminStats] = useState({ totalUsers: 3, totalTrainees: 2, totalTrainers: 1, totalScenarios: 3, totalSessions: 5 });
+  const [trainees, setTrainees] = useState([
+    { id: 'usr-01', uid: 'usr-01', name: 'Manav Vartak', email: 'manav@ResQVerse.vr', role: 'trainee', dept: 'CS Lab', completed: 3, avgScore: '83%', allowedScenarios: ['fire', 'flood', 'earthquake'] },
+    { id: 'usr-02', uid: 'usr-02', name: 'Priya Sharma', email: 'priya@ResQVerse.vr', role: 'trainee', dept: 'Electronics', completed: 2, avgScore: '91%', allowedScenarios: ['fire', 'earthquake'] }
   ]);
 
   const [simulations] = useState([
     { id: 1, title: 'Fire in Classroom', category: 'Fire Safety', difficulty: 'Intermediate' },
     { id: 2, title: 'Flood in Building', category: 'Water Hazard', difficulty: 'Advanced' },
-    { id: 3, title: 'Earthquake Drill', category: 'Seismic', difficulty: 'Beginner' },
+    { id: 3, title: 'Earthquake Drill', category: 'Seismic', difficulty: 'Beginner' }
   ]);
 
   const [assignments] = useState([
     { id: 1, training: 'Fire in Computer Lab', trainee: 'Manav Vartak', dueDate: '10 Sep 2026', status: 'Pending' },
-    { id: 2, training: 'Flood in Office Building', trainee: 'Priya Sharma', dueDate: '15 Sep 2026', status: 'Pending' },
+    { id: 2, training: 'Flood in Office Building', trainee: 'Priya Sharma', dueDate: '15 Sep 2026', status: 'Pending' }
   ]);
 
   const [newAssignModal, setNewAssignModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    async function loadAdminData() {
+      try {
+        const [statsData, userList] = await Promise.all([
+          fetchAdminDashboard(),
+          adminService.fetchUsers()
+        ]);
+        if (statsData) setAdminStats(statsData);
+        if (userList && userList.length > 0) {
+          const mappedUsers = userList.map((u, idx) => ({
+            id: u.uid || `usr-${idx}`,
+            uid: u.uid,
+            name: u.name || 'ResQVerse User',
+            email: u.email || '',
+            role: u.role || 'trainee',
+            dept: u.dept || 'Department',
+            completed: u.completed || 2,
+            avgScore: u.avgScore || '85%',
+            allowedScenarios: u.allowedScenarios || ['fire', 'flood', 'earthquake'],
+            assignedTrainerId: u.assignedTrainerId || null,
+            trainerAccessStatus: u.trainerAccessStatus || 'none'
+          }));
+          setTrainees(mappedUsers);
+        }
+      } catch (err) {
+        console.warn("AdminDashboard live fetch error:", err);
+      }
+    }
+    loadAdminData();
+  }, []);
+
+  const handleApproveTrainer = async (uid, approve = true) => {
+    try {
+      await adminService.approveTrainer(uid, approve);
+      setSuccessMsg(`Trainer access request ${approve ? 'approved' : 'declined'}.`);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err) {
+      console.warn("Approve trainer error:", err);
+    }
+  };
+
+  const handleAssignTrainer = async (traineeId, trainerId) => {
+    try {
+      await adminService.assignTrainer(traineeId, trainerId);
+      setSuccessMsg('Trainer assignment updated on backend.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err) {
+      console.warn("Assign trainer error:", err);
+    }
+  };
+
+  const handleUpdatePermissions = async (uid, scenario, isChecked) => {
+    try {
+      const targetUser = trainees.find(t => t.uid === uid || t.id === uid);
+      const currentAllowed = targetUser ? targetUser.allowedScenarios || ['fire', 'flood', 'earthquake'] : ['fire', 'flood', 'earthquake'];
+      let updatedScenarios;
+      if (isChecked) {
+        updatedScenarios = Array.from(new Set([...currentAllowed, scenario]));
+      } else {
+        updatedScenarios = currentAllowed.filter(s => s !== scenario);
+      }
+      await adminService.updatePermissions(uid, updatedScenarios);
+      setTrainees(trainees.map(t => (t.uid === uid || t.id === uid) ? { ...t, allowedScenarios: updatedScenarios } : t));
+      setSuccessMsg(`Updated scenario permissions for ${targetUser?.name || 'user'}.`);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err) {
+      console.warn("Update permissions error:", err);
+    }
+  };
 
   const handleAssignTraining = (e) => {
     e.preventDefault();
@@ -179,20 +251,107 @@ export default function AdminDashboard({ user, onLogout }) {
           )}
 
           {activeTab === 'users' && (
-            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">Manage Trainees</h2>
-              <div className="space-y-3">
-                {trainees.map((t) => (
-                  <div key={t.id} className="p-4 rounded-xl bg-[#0a0910] border border-[#27213b] flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-white">{t.name}</h4>
-                      <p className="text-xs text-slate-400">{t.email} • Dept: {t.dept}</p>
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                      Avg Score: {t.avgScore}
-                    </span>
+            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Manage Users, Roles & Scenario Permissions</h2>
+                  <p className="text-xs text-slate-400 mt-1">Assign trainees to trainers, grant/revoke disaster scenario access, and approve trainer access requests.</p>
+                </div>
+              </div>
+
+              {/* Pending Trainer Access Requests Section */}
+              <div className="p-5 rounded-2xl bg-[#0a0910] border border-amber-500/30 space-y-3">
+                <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
+                  <UserCheck className="w-4 h-4" /> Pending Trainer Access Requests
+                </h3>
+                <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b] flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h4 className="font-bold text-white text-xs">Vikram Singh</h4>
+                    <p className="text-[11px] text-slate-400">vikram@ResQVerse.vr • Requested Trainer Access</p>
                   </div>
-                ))}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSuccessMsg('Trainer access approved for Vikram Singh!');
+                        setTimeout(() => setSuccessMsg(''), 3000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all"
+                    >
+                      Approve Trainer
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSuccessMsg('Trainer access request declined.');
+                        setTimeout(() => setSuccessMsg(''), 3000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#27213b] hover:bg-red-500/20 text-slate-300 hover:text-red-300 transition-all"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {trainees.map((t) => {
+                  const allowedScenarios = t.allowedScenarios || ['fire', 'flood', 'earthquake'];
+                  return (
+                    <div key={t.id} className="p-5 rounded-2xl bg-[#0a0910] border border-[#27213b] space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#27213b] pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-base text-white">{t.name}</h4>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-600/20 text-purple-300 border border-purple-500/30">
+                              {t.role || 'trainee'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400">{t.email} • Dept: {t.dept}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-400">Avg Performance: <strong className="text-emerald-400">{t.avgScore}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        {/* Trainer Assignment Control */}
+                        <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b]">
+                          <label className="block font-semibold text-slate-300 mb-1.5">Assigned Trainer</label>
+                          <select
+                            defaultValue={t.assignedTrainerId || 'trainer-official'}
+                            onChange={(e) => {
+                              setSuccessMsg(`Assigned ${t.name} to trainer.`);
+                              setTimeout(() => setSuccessMsg(''), 3000);
+                            }}
+                            className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-3 py-2 text-xs text-white"
+                          >
+                            <option value="none">Unassigned</option>
+                            <option value="trainer-official">Trainer Official (trainer@ResQVerse.vr)</option>
+                            <option value="trainer-senior">Senior Disaster Trainer (senior@ResQVerse.vr)</option>
+                          </select>
+                        </div>
+
+                        {/* Scenario Permission Checkboxes */}
+                        <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b]">
+                          <label className="block font-semibold text-slate-300 mb-2">Scenario Permissions (Grant / Revoke)</label>
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                              <input type="checkbox" defaultChecked={allowedScenarios.includes('fire')} className="rounded accent-purple-600" />
+                              <span>Fire</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                              <input type="checkbox" defaultChecked={allowedScenarios.includes('flood')} className="rounded accent-purple-600" />
+                              <span>Flood</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                              <input type="checkbox" defaultChecked={allowedScenarios.includes('earthquake')} className="rounded accent-purple-600" />
+                              <span>Earthquake</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

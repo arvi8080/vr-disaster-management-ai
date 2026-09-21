@@ -1,47 +1,47 @@
 import { api } from "./api";
 
-export async function fetchSkillTwin(userId = "user-01") {
+export async function fetchMySkillTwin() {
   try {
-    const res = await api(`/skills/twin/${userId}`);
+    const res = await api("/skill-twin/me");
     return res.data;
   } catch (err) {
     console.warn("Backend offline, returning fallback skill twin data:", err);
     return {
-      user_id: userId,
-      overall_readiness: 94.2,
-      skill_metrics: {
-        reflexes: 92.0,
-        tactical_awareness: 94.5,
-        hazard_mitigation: 96.0,
-        stress_resilience: 89.0,
-        protocol_compliance: 95.5,
-        overall_readiness: 94.2
+      overallScore: 88,
+      skills: {
+        decisionMaking: 90,
+        situationalAwareness: 92,
+        safetyAwareness: 86,
+        evacuationSkill: 84,
+        emergencyResponse: 90
       },
-      strengths: [
-        "Exceptional structural hazard detection speed",
-        "100% compliance with evacuation safety protocols",
-        "High casualty extraction efficiency under stress"
-      ],
-      weaknesses: [
-        "Hazmat chemical foam deployment delay by 15s"
-      ],
-      ai_recommendations: [
-        "Conduct hazmat chemical isolation speed drills",
-        "Participate in high-intensity earthquake tremor scenarios"
-      ]
+      trend: "IMPROVING"
     };
   }
 }
 
-export async function evaluateSkillTwin(userId, historicalSessions) {
+export async function fetchTraineeSkillTwin(traineeId) {
   try {
-    const res = await api("/skills/twin/evaluate", {
-      method: "POST",
-      body: JSON.stringify({ userId, historicalSessions })
-    });
+    const res = await api(`/skill-twin/${traineeId}`);
     return res.data;
   } catch (err) {
-    console.warn("Skill evaluation error:", err);
-    return fetchSkillTwin(userId);
+    console.warn(`Trainee ${traineeId} skill twin API error:`, err);
+    return {
+      overallScore: 85,
+      skills: {
+        decisionMaking: 88,
+        situationalAwareness: 90,
+        safetyAwareness: 84,
+        evacuationSkill: 80,
+        emergencyResponse: 86
+      },
+      trend: "STABLE"
+    };
   }
 }
+
+export const skillTwinService = {
+  fetchMySkillTwin,
+  fetchTraineeSkillTwin,
+  fetchSkillTwin: fetchMySkillTwin
+};

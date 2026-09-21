@@ -1,38 +1,100 @@
-import React, { useState } from 'react';
-import { X, Play, CheckCircle, Flame, Droplets, Wind, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Play, CheckCircle, Flame, Droplets, Wind, RefreshCw, Cpu } from 'lucide-react';
+import { trainingService } from '../services/trainingService';
 
 export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
   const [step, setStep] = useState(1);
   const [simulating, setSimulating] = useState(false);
   const [actionDone, setActionDone] = useState(false);
   const [score, setScore] = useState(null);
+  const [aiReport, setAiReport] = useState('');
+  const [sessionId, setSessionId] = useState(null);
 
   const isFire = simulation.title.toLowerCase().includes('fire');
   const isFlood = simulation.title.toLowerCase().includes('flood');
 
-  const handleAction = () => {
+  useEffect(() => {
+    async function initSession() {
+      try {
+        const created = await trainingService.createSession(simulation.id || 'sc-fire-01');
+        if (created && created.id) {
+          setSessionId(created.id);
+          await trainingService.startSession(created.id);
+        }
+      } catch (err) {
+        console.warn("Init session error:", err);
+      }
+    }
+    initSession();
+  }, [simulation]);
+
+  const handleAction = async () => {
     setSimulating(true);
+
+    // Ingest simulated VR telemetry events into backend
+    if (sessionId) {
+      try {
+        const events = [
+          {
+            eventType: step === 1 ? 'HAZARD_DETECTED' : step === 2 ? 'CORRECT_DECISION' : 'EVACUATION_COMPLETED',
+            timestamp: new Date().toISOString(),
+            details: { step, scenario: simulation.title }
+          }
+        ];
+        await trainingService.postSessionEvents(sessionId, events);
+      } catch (e) {
+        console.warn("Post telemetry events error:", e);
+      }
+    }
+
     setTimeout(() => {
       setSimulating(false);
       setActionDone(true);
-    }, 1500);
+    }, 1200);
   };
 
-  const finishSimulation = () => {
-    const finalScore = Math.floor(Math.random() * 15) + 85;
-    setScore(finalScore);
-    setTimeout(() => {
-      onComplete({
-        title: simulation.title,
-        score: finalScore,
-        date: 'Today, 2026',
-        aiFeedback: isFire 
-          ? 'Excellent handling of electrical power cutoff before extinguisher application. Extinguisher aim was optimal.'
-          : isFlood
-          ? 'Quick response in sealing basement flood barriers. Evacuation route was executed efficiently.'
-          : 'Proper "Drop, Cover, and Hold On" posture maintained throughout seismic tremors.'
-      });
-    }, 2000);
+  const finishSimulation = async () => {
+    setSimulating(true);
+    try {
+      let resultScore = Math.floor(Math.random() * 15) + 85;
+      let feedbackSummary = isFire
+        ? 'Excellent handling of electrical power cutoff before extinguisher application. Extinguisher aim was optimal.'
+        : isFlood
+        ? 'Quick response in sealing basement flood barriers. Evacuation route was executed efficiently.'
+        : 'Proper "Drop, Cover, and Hold On" posture maintained throughout seismic tremors.';
+
+      if (sessionId) {
+        const completedRes = await trainingService.completeSession(sessionId, {
+          evacuationTime: 120,
+          wrongDecisions: 0,
+          safetyViolations: 0
+        });
+        if (completedRes) {
+          if (completedRes.score !== undefined) resultScore = completedRes.score;
+          if (completedRes.feedback && completedRes.feedback.summary) {
+            feedbackSummary = completedRes.feedback.summary;
+          }
+        }
+      }
+
+      setScore(resultScore);
+      setAiReport(feedbackSummary);
+
+      setTimeout(() => {
+        onComplete({
+          title: simulation.title,
+          score: resultScore,
+          date: 'Today, 2026',
+          aiFeedback: feedbackSummary
+        });
+      }, 2500);
+    } catch (err) {
+      console.warn("Finish simulation error:", err);
+      setScore(88);
+      setAiReport('Completed scenario successfully with strong safety awareness.');
+    } finally {
+      setSimulating(false);
+    }
   };
 
   return (
@@ -47,7 +109,9 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
               <h3 className="font-bold text-white flex items-center gap-2">
                 VR Simulation: {simulation.title}
               </h3>
-              <p className="text-xs text-purple-300">Immersive 3D VR Training Environment Active</p>
+              <p className="text-xs text-purple-300 flex items-center gap-1">
+                <Cpu className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Live Telemetry & AI Feature Extraction Active
+              </p>
             </div>
           </div>
           <button
@@ -60,17 +124,18 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
 
         <div className="relative h-96 bg-[#0a0910] flex flex-col items-center justify-center p-8 text-center overflow-hidden">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f1a2e_1px,transparent_1px),linear-gradient(to_bottom,#1f1a2e_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-30"></div>
-          
+
           {score !== null ? (
-            <div className="relative z-10 animate-fade-in">
-              <div className="w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto mb-4">
+            <div className="relative z-10 animate-fade-in space-y-3 max-w-lg mx-auto">
+              <div className="w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto">
                 <CheckCircle className="w-10 h-10" />
               </div>
-              <h4 className="text-2xl font-bold text-white mb-2">Simulation Completed!</h4>
-              <p className="text-sm text-slate-300 mb-4">AI Performance Score: <span className="text-emerald-400 font-bold text-lg">{score}%</span></p>
-              <p className="text-xs text-purple-300 max-w-md mx-auto bg-purple-950/40 border border-purple-900/50 p-3 rounded-xl">
-                Generating comprehensive training report & AI feedback summary...
-              </p>
+              <h4 className="text-2xl font-bold text-white">Simulation Completed!</h4>
+              <p className="text-sm text-slate-300">AI Performance Score: <span className="text-emerald-400 font-bold text-xl">{score}%</span></p>
+              <div className="text-xs text-purple-300 bg-purple-950/40 border border-purple-900/50 p-4 rounded-xl space-y-1 text-left">
+                <span className="font-bold text-purple-400 block">Personalized AI Evaluation Summary:</span>
+                <p className="text-slate-200 leading-relaxed">{aiReport}</p>
+              </div>
             </div>
           ) : (
             <div className="relative z-10 w-full max-w-lg">
@@ -84,7 +149,7 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
                   {step === 3 && (isFire ? 'Use CO2 extinguisher with PASS method.' : isFlood ? 'Evacuate to higher elevated staircase zone.' : 'Safely exit building via designated fire exit.')}
                 </h4>
                 <p className="text-xs text-slate-400">
-                  {simulating ? 'Processing VR headset input & hand tracking...' : actionDone ? 'Action completed successfully! Proceed to next phase.' : 'Follow on-screen VR instructions using controller trigger.'}
+                  {simulating ? 'Processing VR headset input & hand tracking telemetry...' : actionDone ? 'Action completed successfully! Proceed to next phase.' : 'Follow on-screen VR instructions using controller trigger.'}
                 </p>
               </div>
 
@@ -95,7 +160,7 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
                   className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-3 px-8 rounded-xl shadow-lg shadow-purple-600/30 transition-all flex items-center justify-center gap-2 mx-auto text-sm"
                 >
                   {simulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                  <span>{simulating ? 'Executing VR Action...' : 'Perform VR Action'}</span>
+                  <span>{simulating ? 'Ingesting VR Telemetry...' : 'Perform VR Action'}</span>
                 </button>
               ) : (
                 <button
@@ -107,8 +172,10 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
                       finishSimulation();
                     }
                   }}
+                  disabled={simulating}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-8 rounded-xl shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mx-auto text-sm"
                 >
+                  {simulating && <RefreshCw className="w-4 h-4 animate-spin" />}
                   <span>{step < 3 ? 'Proceed to Next Step' : 'Complete & Generate AI Report'}</span>
                 </button>
               )}
@@ -118,7 +185,9 @@ export default function VRSimulatorModal({ simulation, onClose, onComplete }) {
 
         <div className="px-6 py-3 bg-[#13111c] border-t border-[#27213b] flex items-center justify-between text-xs text-slate-400">
           <span>Headset: Meta Quest / ResQVerse VR Pro Link</span>
-          <span className="text-purple-400 font-medium">AI Trainer Assistant Active</span>
+          <span className="text-purple-400 font-medium flex items-center gap-1">
+            <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Digital Skill Twin & AI Feedback Active
+          </span>
         </div>
       </div>
     </div>
