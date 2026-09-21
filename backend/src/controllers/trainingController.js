@@ -6,7 +6,8 @@ class TrainingController {
     async createSession(req, res, next) {
         try {
             const { scenarioId } = req.body;
-            const session = await trainingService.createSession(scenarioId, req.user.uid);
+            const userAllowedScenarios = req.user.role === ROLES.ADMIN ? ["*"] : req.user.allowedScenarios;
+            const session = await trainingService.createSession(scenarioId, req.user.uid, userAllowedScenarios);
             return sendSuccess(res, session, "Training session created successfully", 201);
         } catch (error) {
             next(error);

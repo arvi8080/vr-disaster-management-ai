@@ -78,13 +78,27 @@ class DashboardController {
 
     async getTrainerDashboard(req, res, next) {
         try {
-            // Trainee counts
-            const traineesSnapshot = await db.collection("users")
-                .where("role", "==", ROLES.TRAINEE)
-                .get();
-            const totalTrainees = traineesSnapshot.size;
+            const isTrainer = req.user.role === ROLES.TRAINER;
+            const trainerUid = isTrainer ? req.user.uid : (req.query.trainerId || null);
 
-            // Skill Profiles & Trends
+            // Trainee query
+            let traineesQuery = db.collection("users").where("role", "==", ROLES.TRAINEE);
+            if (trainerUid) {
+                traineesQuery = traineesQuery.where("assignedTrainerId", "==", trainerUid);
+            }
+
+            const traineesSnapshot = await traineesQuery.get();
+            const assignedTrainees = [];
+            const assignedTraineeIds = new Set();
+
+            traineesSnapshot.forEach(doc => {
+                assignedTrainees.push({ uid: doc.id, ...doc.data() });
+                assignedTraineeIds.add(doc.id);
+            });
+
+            const totalTrainees = assignedTrainees.length;
+
+            // Skill Profiles & Trends for assigned trainees
             const skillProfilesSnapshot = await db.collection("skillProfiles").get();
             const improvingTrainees = [];
             const decliningTrainees = [];
@@ -93,36 +107,43 @@ class DashboardController {
             let profileCount = 0;
 
             skillProfilesSnapshot.forEach(doc => {
-                const profile = doc.data();
-                profileCount++;
-                aggregateScoreSum += (profile.overallScore || 50);
+                const traineeId = doc.id;
+                if (!trainerUid || assignedTraineeIds.has(traineeId)) {
+                    const profile = doc.data();
+                    profileCount++;
+                    aggregateScoreSum += (profile.overallScore || 50);
 
-                const item = {
-                    traineeId: doc.id,
-                    overallScore: profile.overallScore,
-                    trend: profile.trend || TRENDS.STABLE,
-                    lastUpdated: profile.lastUpdated
-                };
+                    const item = {
+                        traineeId,
+                        overallScore: profile.overallScore,
+                        trend: profile.trend || TRENDS.STABLE,
+                        lastUpdated: profile.lastUpdated
+                    };
 
-                if (profile.trend === TRENDS.IMPROVING) improvingTrainees.push(item);
-                if (profile.trend === TRENDS.DECLINING) decliningTrainees.push(item);
-                if ((profile.overallScore || 50) < 60) atRiskTrainees.push(item);
+                    if (profile.trend === TRENDS.IMPROVING) improvingTrainees.push(item);
+                    if (profile.trend === TRENDS.DECLINING) decliningTrainees.push(item);
+                    if ((profile.overallScore || 50) < 60) atRiskTrainees.push(item);
+                }
             });
 
             const averagePerformance = profileCount > 0 ? Math.round(aggregateScoreSum / profileCount) : 0;
 
-            // Fetch recent sessions
-            const sessionsSnapshot = await db.collection("trainingSessions")
-                .limit(20)
-                .get();
+            // Fetch recent sessions for assigned trainees
+            const sessionsSnapshot = await db.collection("trainingSessions").get();
 
             const sessions = [];
             sessionsSnapshot.forEach(doc => {
-                sessions.push({ id: doc.id, ...doc.data() });
+                const sessionData = doc.data();
+                if (!trainerUid || assignedTraineeIds.has(sessionData.traineeId)) {
+                    sessions.push({ id: doc.id, ...sessionData });
+                }
             });
+
+            sessions.sort((a, b) => new Date(b.createdAt || b.startedAt) - new Date(a.createdAt || a.startedAt));
 
             return sendSuccess(res, {
                 totalTrainees,
+                assignedTrainees,
                 totalSessions: sessions.length,
                 averagePerformance,
                 improvingTraineesCount: improvingTrainees.length,

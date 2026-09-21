@@ -1,7 +1,7 @@
 const { auth, db } = require("../config/firebase");
 const { FieldValue } = require("firebase-admin/firestore");
 const { sendError } = require("../utils/response");
-const { ERROR_CODES, ROLES } = require("../utils/constants");
+const { ERROR_CODES, ROLES, DEFAULT_ALLOWED_SCENARIOS } = require("../utils/constants");
 const logger = require("../utils/logger");
 
 async function authMiddleware(req, res, next) {
@@ -39,6 +39,10 @@ async function authMiddleware(req, res, next) {
                 email: email || "",
                 role: ROLES.TRAINEE,
                 photoURL: picture || null,
+                allowedScenarios: DEFAULT_ALLOWED_SCENARIOS,
+                assignedTrainerId: null,
+                assignedTraineeIds: [],
+                trainerAccessStatus: "none",
                 createdAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp()
             };
@@ -48,13 +52,20 @@ async function authMiddleware(req, res, next) {
             userData = userDoc.data();
         }
 
+        const userRole = userData.role || ROLES.TRAINEE;
+        const allowedScenarios = userRole === ROLES.ADMIN ? ["*"] : (userData.allowedScenarios || DEFAULT_ALLOWED_SCENARIOS);
+
         // Attach user info to req.user
         req.user = {
             uid,
             email: userData.email,
-            role: userData.role || ROLES.TRAINEE,
+            role: userRole,
             name: userData.name,
-            photoURL: userData.photoURL || null
+            photoURL: userData.photoURL || null,
+            allowedScenarios,
+            assignedTrainerId: userData.assignedTrainerId || null,
+            assignedTraineeIds: userData.assignedTraineeIds || [],
+            trainerAccessStatus: userData.trainerAccessStatus || "none"
         };
 
         next();

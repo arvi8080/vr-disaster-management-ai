@@ -23,29 +23,41 @@ class UserController {
     }
 
     async createProfile(req, res, next) {
-        try {
-            const userData = {
-                uid: req.user.uid,
-                email: req.user.email,
-                name: req.body.name || req.user.name,
-                role: req.body.role || req.user.role,
-                photoURL: req.body.photoURL || req.user.photoURL
-            };
+    try {
+        const userData = {
+            uid: req.user.uid,
+            email: req.user.email,
+            name: req.body.name || req.user.name,
+            role: ROLES.TRAINEE,
+            photoURL: req.body.photoURL || req.user.photoURL,
+            requestTrainer: Boolean(req.body.requestTrainer)
+        };
 
-            const created = await userService.createUserProfile(userData);
-            return sendSuccess(res, created, "User profile synchronized successfully", 201);
-        } catch (error) {
-            next(error);
-        }
+        const created = await userService.createUserProfile(userData);
+
+        return sendSuccess(
+            res,
+            created,
+            "User profile synchronized successfully",
+            201
+        );
+    } catch (error) {
+        next(error);
     }
+}
 
-    async updateProfile(req, res, next) {
+        async updateProfile(req, res, next) {
         try {
             const { uid } = req.params;
 
             // Non-admins can only update their own profile
             if (req.user.uid !== uid && req.user.role !== ROLES.ADMIN) {
-                return sendError(res, "Access denied: cannot modify another user's profile", ERROR_CODES.FORBIDDEN, 403);
+                return sendError(
+                    res,
+                    "Access denied: cannot modify another user's profile",
+                    ERROR_CODES.FORBIDDEN,
+                    403
+                );
             }
 
             // Non-admins cannot change roles
@@ -54,11 +66,21 @@ class UserController {
             }
 
             const updated = await userService.updateUserProfile(uid, req.body);
+
             if (!updated) {
-                return sendError(res, "User not found", ERROR_CODES.NOT_FOUND, 404);
+                return sendError(
+                    res,
+                    "User not found",
+                    ERROR_CODES.NOT_FOUND,
+                    404
+                );
             }
 
-            return sendSuccess(res, updated, "User profile updated successfully");
+            return sendSuccess(
+                res,
+                updated,
+                "User profile updated successfully"
+            );
         } catch (error) {
             next(error);
         }

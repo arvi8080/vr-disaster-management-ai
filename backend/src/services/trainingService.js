@@ -8,13 +8,23 @@ const skillTwinService = require("./skillTwinService");
 const feedbackService = require("./feedbackService");
 const logger = require("../utils/logger");
 
+const { hasScenarioAccess } = require("../middleware/permissionMiddleware");
+
 class TrainingService {
-    async createSession(scenarioId, traineeId) {
+    async createSession(scenarioId, traineeId, userAllowedScenarios = null) {
         const scenarioDoc = await db.collection("scenarios").doc(scenarioId).get();
         if (!scenarioDoc.exists) {
             const err = new Error("Scenario not found");
             err.statusCode = 404;
             err.errorCode = "NOT_FOUND";
+            throw err;
+        }
+
+        const scenarioData = scenarioDoc.data();
+        if (userAllowedScenarios && !hasScenarioAccess(userAllowedScenarios, scenarioData.disasterType)) {
+            const err = new Error(`Access denied: You do not have permission for '${scenarioData.disasterType || "this"}' scenario`);
+            err.statusCode = 403;
+            err.errorCode = "FORBIDDEN";
             throw err;
         }
 

@@ -1,6 +1,7 @@
 const scenarioService = require("../services/scenarioService");
 const { sendSuccess, sendError } = require("../utils/response");
-const { ERROR_CODES } = require("../utils/constants");
+const { ERROR_CODES, ROLES } = require("../utils/constants");
+const { hasScenarioAccess } = require("../middleware/permissionMiddleware");
 
 class ScenarioController {
     async createScenario(req, res, next) {
@@ -15,6 +16,12 @@ class ScenarioController {
     async listScenarios(req, res, next) {
         try {
             const result = await scenarioService.listScenarios(req);
+            
+            // Filter scenarios according to req.user.allowedScenarios if not Admin
+            if (req.user && req.user.role !== ROLES.ADMIN && req.user.allowedScenarios && Array.isArray(result.data)) {
+                result.data = result.data.filter(s => hasScenarioAccess(req.user.allowedScenarios, s.disasterType));
+            }
+
             return sendSuccess(res, result.data, "Scenarios retrieved successfully", 200, result.pagination);
         } catch (error) {
             next(error);
@@ -28,6 +35,13 @@ class ScenarioController {
             if (!scenario) {
                 return sendError(res, "Scenario not found", ERROR_CODES.NOT_FOUND, 404);
             }
+
+            if (req.user && req.user.role !== ROLES.ADMIN) {
+                if (!hasScenarioAccess(req.user.allowedScenarios, scenario.disasterType)) {
+                    return sendError(res, `Access denied: You do not have permission to access '${scenario.disasterType}' scenarios`, ERROR_CODES.FORBIDDEN, 403);
+                }
+            }
+
             return sendSuccess(res, scenario);
         } catch (error) {
             next(error);

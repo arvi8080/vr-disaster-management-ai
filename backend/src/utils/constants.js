@@ -85,6 +85,8 @@ module.exports = {
     ERROR_CODES,
     SKILL_DIMENSIONS,
     SKILL_UPDATE_WEIGHTS,
-    TRENDS
+    TRENDS,
+    DEFAULT_ALLOWED_SCENARIOS: ["fire", "flood", "earthquake"]
 };
+
 
