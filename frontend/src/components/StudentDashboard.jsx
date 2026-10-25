@@ -6,8 +6,6 @@ import { fetchTraineeDashboard } from '../services/dashboardService';
 import { fetchScenarios } from '../services/scenarioService';
 import { fetchAllMySessions, fetchAssignmentsForMe, fetchMySessions } from '../services/trainingService';
 import { analyzeTrainingSession } from '../services/aiService';
-import { fetchMySkillTwin } from '../services/skillTwinService';
-import { fetchAllMyFeedback } from '../services/feedbackService';
 import ThemeToggle from './ThemeToggle';
 
 function escapeHtml(value) {
@@ -34,6 +32,132 @@ function csvCell(value) {
   let text = String(value ?? '');
   if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+function formatSeconds(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? `${value.toFixed(2)} s`
+    : 'N/A';
+}
+
+function formatActionDuration(value, actionResult) {
+  if (actionResult === 'Not completed') return 'Not completed';
+  return formatSeconds(value);
+}
+
+function timestampMillis(value) {
+  if (value?._seconds) return value._seconds * 1000;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function getUnityEvents(session) {
+  return Array.isArray(session.performanceFeatures?.events)
+    ? session.performanceFeatures.events
+    : [];
+}
+
+function getActionResult(session, flag, eventType) {
+  const value = session[flag] ?? session.performanceFeatures?.objectiveFlags?.[flag];
+  if (typeof value === 'boolean') return value ? 'Completed' : 'Not completed';
+  return getUnityEvents(session).some(event => event.eventType === eventType)
+    ? 'Completed'
+    : 'Unknown / not assessed';
+}
+
+function getProcedureSequence(session) {
+  const events = getUnityEvents(session);
+  const actionTypes = ['POWER_ISOLATED', 'EXTINGUISHER_PIN_REMOVED', 'EXTINGUISHING_STARTED'];
+  const actionEvents = actionTypes.map(eventType => events.find(event => event.eventType === eventType));
+  if (actionEvents.some(event => !event || !event.timestamp)) return 'Unknown / not assessed';
+  const timestamps = actionEvents.map(event => new Date(event.timestamp).getTime());
+  if (timestamps.some(timestamp => !Number.isFinite(timestamp))) return 'Unknown / not assessed';
+  return timestamps[0] < timestamps[1] && timestamps[1] < timestamps[2]
+    ? 'Correct sequence recorded'
+    : 'Out of sequence';
+}
+
+function getAttemptNumber(sessions, session) {
+  const sessionDate = timestampMillis(session.completedAt || session.createdAt);
+  const sameScenario = sessions.filter(item =>
+    (item.scenarioId || item.simulationType) === (session.scenarioId || session.simulationType)
+  );
+  const ordered = sameScenario
+    .slice()
+    .sort((a, b) => timestampMillis(a.completedAt || a.createdAt) - timestampMillis(b.completedAt || b.createdAt));
+  const index = ordered.findIndex(item => item.id === session.id);
+  if (index >= 0) return index + 1;
+  return sameScenario.filter(item => timestampMillis(item.completedAt || item.createdAt) <= sessionDate).length || 1;
+}
+
+function getSessionStatus(session) {
+  const status = String(session.status || session.completionStatus || '').toLowerCase();
+  if (status === 'completed') return 'Completed';
+  if (status === 'abandoned' || status === 'cancelled') return 'Abandoned';
+  return 'Incomplete';
+}
+
+function getEvidenceFeedback(session) {
+  const events = getUnityEvents(session);
+  const strengths = [];
+  const improvements = [];
+  const practice = [];
+
+  for (const [flag, label] of [
+    ['powerWasTurnedOff', 'Power isolation'],
+    ['pinWasRemoved', 'Extinguisher pin removal']
+  ]) {
+    const result = getActionResult(session, flag, flag === 'powerWasTurnedOff' ? 'POWER_ISOLATED' : 'EXTINGUISHER_PIN_REMOVED');
+    if (result === 'Completed') strengths.push(`${label} was recorded as completed.`);
+    if (result === 'Not completed') {
+      improvements.push(`${label} was recorded as not completed.`);
+      practice.push(`Practice the ${label.toLowerCase()} step in the next fire-safety run.`);
+    }
+  }
+
+  const fireWasExtinguished = session.fireWasExtinguished ?? session.performanceFeatures?.fireWasExtinguished;
+  if (fireWasExtinguished === true || events.some(event => event.eventType === 'FIRE_EXTINGUISHED')) {
+    strengths.push('Unity recorded that the fire was extinguished.');
+  } else if (fireWasExtinguished === false) {
+    improvements.push('Unity did not record the fire as extinguished.');
+    practice.push('Practice extinguisher operation until the fire-extinguished objective is recorded.');
+  }
+
+  const violations = events.filter(event => event.eventType === 'SAFETY_VIOLATION');
+  if (violations.length > 0 || session.procedureViolation === true) {
+    improvements.push('A procedural violation was recorded.');
+    practice.push('Review the recorded procedure event with a trainer before repeating the simulation.');
+  } else if (session.procedureViolation === false || session.safetyViolations === 0) {
+    strengths.push('Unity recorded no procedural violations.');
+  }
+
+  return { strengths, improvements, practice };
+}
+
+function getFeedbackEvidence(session, text) {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('power')) {
+    return `${getActionResult(session, 'powerWasTurnedOff', 'POWER_ISOLATED')}; recorded Unity power flag/event`;
+  }
+  if (lowerText.includes('pin')) {
+    return `${getActionResult(session, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED')}; recorded Unity pin flag/event`;
+  }
+  if (lowerText.includes('fire') || lowerText.includes('extinguisher')) {
+    const result = session.fireWasExtinguished ?? session.performanceFeatures?.fireWasExtinguished;
+    return typeof result === 'boolean'
+      ? `fireWasExtinguished=${result}`
+      : getUnityEvents(session).some(event => event.eventType === 'FIRE_EXTINGUISHED')
+        ? 'FIRE_EXTINGUISHED event recorded'
+        : 'No fire outcome event recorded';
+  }
+  if (lowerText.includes('procedur')) {
+    const violations = getUnityEvents(session).filter(event => event.eventType === 'SAFETY_VIOLATION');
+    return violations.length
+      ? violations.map(event => `SAFETY_VIOLATION${event.timestamp ? ` at ${formatReportDate(event.timestamp)}` : ''}`).join('; ')
+      : `procedureViolation=${session.procedureViolation ?? 'unknown'}`;
+  }
+  return 'No specific recorded event was available.';
 }
 
 export default function StudentDashboard({ user, onLogout, onNavigate, theme, onToggleTheme }) {
@@ -114,50 +238,35 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
     });
   };
 
-  const getPersistedAIAnalyses = feedbackRecords => new Map(
-    feedbackRecords
-      .filter(record => record.type === 'AI' && record.sessionId)
-      .map(record => [record.sessionId, record])
-  );
-
   const handleDownloadReport = async () => {
     setReportAction('csv');
     setReportError('');
     try {
-      const [allSessions, skillTwin, feedbackRecords] = await Promise.all([
-        getAllSessionsForReport(),
-        fetchMySkillTwin(),
-        fetchAllMyFeedback()
-      ]);
-      const savedAnalyses = getPersistedAIAnalyses(feedbackRecords);
+      const allSessions = await getAllSessionsForReport();
       const rows = [
-        ['Trainee', user.name || '', 'Email', user.email || ''],
-        ['Overall Skill Twin Score', skillTwin.overallScore ?? 'Unavailable', 'Training Sessions', allSessions.length],
+        ['Trainee name', user.name || 'Unavailable', 'Trainee email', user.email || 'Unavailable'],
+        ['Report type', 'Computer Lab Fire Safety evidence report', 'Training sessions', allSessions.length],
         [],
-        ['Scenario', 'Fire Location', 'Completed / Created', 'Status', 'Score', 'Total Response (seconds)', 'Power Isolation (seconds)', 'Pin Removal (seconds)', 'Extinguishing (seconds)', 'Objectives Completed', 'Safety Violations', 'Procedure Violation', 'AI Risk Level', 'AI Strengths', 'AI Areas to Improve', 'AI Recommendations']
+        ['Session number', 'Scenario', 'Date/time', 'Status', 'Duration', 'Power isolation', 'Pin removal', 'Fire extinguished', 'Action sequence', 'Safety violations', 'Recorded events']
       ];
       allSessions.forEach(session => {
-        const analysis = aiAnalyses[session.id] || savedAnalyses.get(session.id) || {};
+        const events = getUnityEvents(session);
         rows.push([
+          getAttemptNumber(allSessions, session),
           getSessionTitle(session),
-          session.fireLocation || 'Unavailable',
           formatReportDate(session.completedAt || session.createdAt),
-          session.status || 'Unavailable',
-          session.score ?? 'Unavailable',
-          session.unityMetrics?.totalResponseTime ?? session.duration ?? 'Unavailable',
-          session.unityMetrics?.powerIsolationTime ?? 'Unavailable',
-          session.unityMetrics?.pinRemovalTime ?? 'Unavailable',
-          session.unityMetrics?.extinguishingTime ?? 'Unavailable',
-          session.objectivesCompleted ?? 'Unavailable',
-          session.safetyViolations ?? 'Unavailable',
-          session.procedureViolation === true ? 'Yes' : session.procedureViolation === false ? 'No' : 'Unavailable',
-          analysis.riskLevel || 'Not generated',
-          (analysis.strengths || []).join('; '),
-          (analysis.weaknesses || []).join('; '),
-          (analysis.recommendations || []).join('; ')
+          getSessionStatus(session),
+          formatSeconds(session.unityMetrics?.totalResponseTime ?? session.duration),
+          getActionResult(session, 'powerWasTurnedOff', 'POWER_ISOLATED'),
+          getActionResult(session, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED'),
+          getActionResult(session, 'fireWasExtinguished', 'FIRE_EXTINGUISHED'),
+          getProcedureSequence(session),
+          Number.isFinite(session.safetyViolations)
+            ? Math.max(session.safetyViolations, events.filter(event => event.eventType === 'SAFETY_VIOLATION').length)
+            : events.filter(event => event.eventType === 'SAFETY_VIOLATION').length || 'Unknown',
+          events.map(event => `${event.eventType}${event.timestamp ? ` @ ${formatReportDate(event.timestamp)}` : ''}`).join('; ') || 'No event history recorded'
         ]);
       });
-      Object.entries(skillTwin.skills || {}).forEach(([skill, score]) => rows.push([`Skill: ${skill}`, score]));
 
       const csv = rows.map(row => row.map(csvCell).join(',')).join('\r\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -186,41 +295,137 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
     setReportAction('pdf');
     setReportError('');
     try {
-      const [allSessions, skillTwin, feedbackRecords] = await Promise.all([
-        getAllSessionsForReport(),
-        fetchMySkillTwin(),
-        fetchAllMyFeedback()
-      ]);
-      const savedAnalyses = getPersistedAIAnalyses(feedbackRecords);
+      const allSessions = await getAllSessionsForReport();
       const sessionRows = allSessions.map(session => {
-        const analysis = aiAnalyses[session.id] || savedAnalyses.get(session.id) || {};
-        const feedback = [
-          ...(analysis.strengths || []).map(item => `<li><strong>Strength:</strong> ${escapeHtml(item)}</li>`),
-          ...(analysis.weaknesses || []).map(item => `<li><strong>Improve:</strong> ${escapeHtml(item)}</li>`),
-          ...(analysis.recommendations || []).map(item => `<li><strong>Next step:</strong> ${escapeHtml(item)}</li>`)
-        ].join('');
-        return `<article><h2>${escapeHtml(getSessionTitle(session))}</h2>
-          <p>${escapeHtml(formatReportDate(session.completedAt || session.createdAt))} · ${escapeHtml(session.status || 'Status unavailable')} · Score: ${escapeHtml(session.score ?? 'Unavailable')}</p>
-          <p>Location: ${escapeHtml(session.fireLocation || 'Unavailable')} · Objectives completed: ${escapeHtml(session.objectivesCompleted ?? 'Unavailable')} · Safety violations: ${escapeHtml(session.safetyViolations ?? 'Unavailable')} · Procedure violation: ${session.procedureViolation === true ? 'Yes' : session.procedureViolation === false ? 'No' : 'Unavailable'}</p>
-          <p>Total response: ${escapeHtml(session.unityMetrics?.totalResponseTime ?? 'Unavailable')} sec · Power isolation: ${escapeHtml(session.unityMetrics?.powerIsolationTime ?? 'Unavailable')} sec · Pin removal: ${escapeHtml(session.unityMetrics?.pinRemovalTime ?? 'Unavailable')} sec · Extinguishing: ${escapeHtml(session.unityMetrics?.extinguishingTime ?? 'Unavailable')} sec</p>
-          ${feedback ? `<ul>${feedback}</ul>` : '<p>AI feedback has not been generated for this session.</p>'}</article>`;
+        const attempt = getAttemptNumber(allSessions, session);
+        const events = getUnityEvents(session);
+        const scenarioSessions = allSessions.filter(item =>
+          (item.scenarioId || item.simulationType) === (session.scenarioId || session.simulationType)
+        );
+        const sessionTime = timestampMillis(session.completedAt || session.createdAt);
+        const previousSession = scenarioSessions
+          .filter(item => item.id !== session.id && timestampMillis(item.completedAt || item.createdAt) < sessionTime)
+          .sort((a, b) => timestampMillis(b.completedAt || b.createdAt) - timestampMillis(a.completedAt || a.createdAt))[0];
+        const feedback = getEvidenceFeedback(session);
+        const actionResult = (label, result, evidence) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(result)}</td><td>${escapeHtml(evidence)}</td></tr>`;
+        const powerResult = getActionResult(session, 'powerWasTurnedOff', 'POWER_ISOLATED');
+        const pinResult = getActionResult(session, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED');
+        const fireFlag = session.fireWasExtinguished ?? session.performanceFeatures?.fireWasExtinguished;
+        const fireResult = typeof fireFlag === 'boolean'
+          ? fireFlag ? 'Completed' : 'Not completed'
+          : events.some(event => event.eventType === 'FIRE_EXTINGUISHED') ? 'Completed' : 'Unknown / not assessed';
+        const objectivesCompleted = session.objectivesCompleted ?? session.performanceFeatures?.objectivesCompleted;
+        const violations = events.filter(event => event.eventType === 'SAFETY_VIOLATION');
+        const violationCount = Number.isFinite(session.safetyViolations)
+          ? Math.max(session.safetyViolations, violations.length)
+          : violations.length || (session.procedureViolation === true ? 1 : null);
+        const violationList = violations.map(event => {
+          const action = event.metadata?.action || 'Action not captured';
+          const time = event.timestamp ? formatReportDate(event.timestamp) : 'Timestamp unavailable';
+          const startEvent = events.find(item => item.eventType === 'EXTINGUISHING_STARTED');
+          const powerEvent = events.find(item => item.eventType === 'POWER_ISOLATED');
+          const sprayBeforePower = startEvent?.timestamp && powerEvent?.timestamp
+            && new Date(startEvent.timestamp) < new Date(powerEvent.timestamp);
+          const reason = sprayBeforePower
+            ? 'Extinguishing started before power isolation was recorded.'
+            : 'The specific unsafe action or rule was not captured.';
+          return `<li>${escapeHtml(action)} — ${escapeHtml(time)}. ${escapeHtml(reason)}</li>`;
+        }).join('');
+        const objectiveSequence = getProcedureSequence(session);
+        const sequenceEvidence = objectiveSequence === 'Unknown / not assessed'
+          ? 'Timestamped power, pin, and extinguisher-start events are required.'
+          : 'Expected order: isolate power, remove pin, then begin extinguisher operation.';
+        const renderFeedbackItem = (item, interpretation) => `<li><strong>Observation:</strong> ${escapeHtml(item)} <strong>Evidence:</strong> ${escapeHtml(getFeedbackEvidence(session, item))} <strong>Interpretation:</strong> ${escapeHtml(interpretation)}</li>`;
+        const strengthItems = feedback.strengths
+          .map(item => renderFeedbackItem(item, 'This action was recorded in this attempt only.'))
+          .join('');
+        const improvementItems = feedback.improvements
+          .map(item => renderFeedbackItem(item, 'This is a recorded gap for this attempt; it is not a long-term competency judgment.'))
+          .join('');
+        const practiceItems = feedback.practice
+          .map(item => `<li><strong>Recommendation:</strong> ${escapeHtml(item)} <strong>Evidence basis:</strong> ${escapeHtml(getFeedbackEvidence(session, item))}</li>`)
+          .join('');
+        const eventRows = events.map(event => `<li>${escapeHtml(event.eventType)} — ${escapeHtml(event.timestamp ? formatReportDate(event.timestamp) : 'Timestamp unavailable')}</li>`).join('');
+        const duration = session.unityMetrics?.totalResponseTime ?? session.duration;
+        const initialLabel = attempt === 1 ? 'Initial assessment (first attempt)' : `Attempt ${attempt}`;
+        const status = getSessionStatus(session);
+        const sessionSummary = `Session ${attempt}: ${getSessionTitle(session)}. ${status}.`;
+        const twinProgress = attempt === 1
+          ? 'This first attempt establishes an initial baseline only; it does not establish a stable competency profile or long-term trend.'
+          : previousSession
+            ? `Compared with attempt ${getAttemptNumber(allSessions, previousSession)}: power isolation ${getActionResult(previousSession, 'powerWasTurnedOff', 'POWER_ISOLATED')} → ${powerResult}; pin removal ${getActionResult(previousSession, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED')} → ${pinResult}. This is an attempt-level comparison, not a stable competency trend.`
+            : `Attempt ${attempt} is available for comparison with earlier sessions; no stable competency or trend is inferred from a single attempt.`;
+        const recurringViolationAttempts = scenarioSessions.filter(item =>
+          item.procedureViolation === true
+          || (Number.isFinite(item.safetyViolations) && item.safetyViolations > 0)
+          || getUnityEvents(item).some(event => event.eventType === 'SAFETY_VIOLATION')
+        ).length;
+        const nextObjective = objectiveSequence === 'Out of sequence'
+          ? 'Practice isolating power, removing the extinguisher pin, and only then beginning extinguisher operation.'
+          : feedback.practice[0]
+            || (attempt === 1
+              ? 'Repeat Computer Lab Fire Safety to establish a second attempt and confirm all required actions are recorded.'
+              : 'No corrective objective can be selected from the available recorded evidence.');
+        return `<article>
+          <h2>${escapeHtml(sessionSummary)}</h2>
+          <h3>01 — Session overview</h3>
+          <table><tbody>
+            <tr><th>Trainee</th><td>${escapeHtml(user.name || 'Unavailable')}</td><th>Email</th><td>${escapeHtml(user.email || 'Unavailable')}</td></tr>
+            <tr><th>Simulation</th><td>${escapeHtml(getSessionTitle(session))}</td><th>Attempt type</th><td>${escapeHtml(initialLabel)}</td></tr>
+            <tr><th>Fire location</th><td>${escapeHtml(session.fireLocation || 'Not recorded')}</td><th>Session number</th><td>${escapeHtml(attempt)}</td></tr>
+            <tr><th>Date/time</th><td>${escapeHtml(formatReportDate(session.completedAt || session.createdAt))}</td><th>Status</th><td>${escapeHtml(status)}</td></tr>
+            <tr><th>Duration</th><td>${escapeHtml(formatSeconds(duration))}</td><th>Objectives completed</th><td>${escapeHtml(objectivesCompleted ?? 'Unknown')}</td></tr>
+            <tr><th>Recorded safety violations</th><td colspan="3">${escapeHtml(violationCount ?? 'Unknown')}</td></tr>
+            <tr><th>Safety outcome</th><td colspan="3">${escapeHtml(violationCount > 0 ? 'Not a safe completion' : violationCount === 0 && status === 'Completed' ? 'Completed with no recorded violations' : 'Unknown / incomplete')}</td></tr>
+          </tbody></table>
+          <h3>02 — Required action assessment</h3>
+          <table><thead><tr><th>Action</th><th>Result</th><th>Evidence</th></tr></thead><tbody>
+            ${actionResult('Power isolation', powerResult, 'Unity action flag or POWER_ISOLATED event')}
+            ${actionResult('Extinguisher pin removal', pinResult, 'Unity action flag or EXTINGUISHER_PIN_REMOVED event')}
+            ${actionResult('Extinguisher operation', fireResult, 'Unity fire result flag or FIRE_EXTINGUISHED event')}
+            ${actionResult('Correct action sequence', objectiveSequence, sequenceEvidence)}
+          </tbody></table>
+          <h3>03 — Response metrics</h3>
+          <table><thead><tr><th>Metric</th><th>Result</th><th>Start → end definition</th></tr></thead><tbody>
+            <tr><td>Time to isolate power</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.powerIsolationTime, powerResult))}</td><td>Scenario start → POWER_ISOLATED</td></tr>
+            <tr><td>Time to remove pin</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.pinRemovalTime, pinResult))}</td><td>Scenario start → EXTINGUISHER_PIN_REMOVED</td></tr>
+            <tr><td>Time to extinguish</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.extinguishingTime, fireResult))}</td><td>EXTINGUISHING_STARTED → FIRE_EXTINGUISHED</td></tr>
+            <tr><td>Total response time</td><td>${escapeHtml(status === 'Completed' ? formatSeconds(duration) : 'Not completed')}</td><td>SCENARIO_STARTED → SCENARIO_COMPLETED</td></tr>
+          </tbody></table>
+          <h3>04 — Safety events</h3>
+          ${violationList ? `<ul>${violationList}</ul>` : violationCount === 0 ? '<p>No procedural violation was recorded.</p>' : '<p>Violation details were not recorded; no action or timestamp is inferred.</p>'}
+          <h3>05 — Evidence-based performance feedback</h3>
+          <p>Feedback below is generated only from recorded action flags and events.</p>
+          <div class="feedback"><strong>What went well</strong><ul>${strengthItems || '<li>No verified successful action recorded.</li>'}</ul>
+          <strong>What needs improvement</strong><ul>${improvementItems || '<li>No specific recorded mistake available.</li>'}</ul>
+          <strong>Recommended practice</strong><ul>${practiceItems || '<li>No corrective exercise assigned from the available evidence.</li>'}</ul></div>
+          <h3>06 — Digital Skill Twin progress</h3>
+          <p>${escapeHtml(twinProgress)}</p>
+          ${recurringViolationAttempts > 1 ? `<p>Recurring evidence: a procedural violation was recorded in ${recurringViolationAttempts} attempts for this scenario.</p>` : '<p>No recurring procedural error is established from the available attempts.</p>'}
+          <p><strong>Recommended next training objective:</strong> ${escapeHtml(nextObjective)}</p>
+          <p>Demonstrated competencies: ${escapeHtml([
+            ...(powerResult === 'Completed' ? ['Power isolation'] : []),
+            ...(pinResult === 'Completed' ? ['Extinguisher pin removal'] : []),
+            ...(fireResult === 'Completed' ? ['Fire extinguishing'] : [])
+          ].join(', ') || 'None established from the available evidence')}</p>
+          <p>Session history contains ${allSessions.length} attempt(s). Recurring errors or long-term trends are not claimed unless repeated evidence is available.</p>
+          <details><summary>Recorded event history</summary><ul>${eventRows || '<li>No timestamped event history available.</li>'}</ul></details>
+        </article>`;
       }).join('');
-      const skills = Object.entries(skillTwin.skills || {}).map(([name, score]) =>
-        `<tr><td>${escapeHtml(name.replace(/([A-Z])/g, ' $1'))}</td><td>${escapeHtml(score)} / 100</td></tr>`
-      ).join('');
       reportWindow.document.open();
       reportWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>ResQVerse Training Report</title>
         <style>
           body{font:14px Arial,sans-serif;color:#172033;max-width:900px;margin:36px auto;padding:0 24px}
-          h1{color:#9a3412}h2{font-size:18px;margin-bottom:6px}p{line-height:1.5;color:#475569}
-          article{border-top:1px solid #cbd5e1;padding:16px 0}table{border-collapse:collapse;width:100%}
-          td,th{border:1px solid #cbd5e1;padding:8px;text-align:left}ul{line-height:1.6}
+          h1{color:#9a3412}h2{font-size:20px;margin-bottom:6px}h3{font-size:16px;margin:22px 0 8px;color:#9a3412}p{line-height:1.5;color:#475569}
+          article{border-top:2px solid #cbd5e1;padding:16px 0;break-inside:avoid}table{border-collapse:collapse;width:100%;margin:8px 0 16px}
+          td,th{border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top}ul{line-height:1.6}
+          .feedback{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.feedback ul{padding-left:20px}
           @media print{body{margin:0 auto}article{break-inside:avoid}}
         </style></head><body>
-        <h1>ResQVerse Training Report</h1><p>Trainee: ${escapeHtml(user.name || 'Trainee')} · ${escapeHtml(user.email || '')}</p>
-        <p>Generated: ${escapeHtml(new Date().toLocaleString())} · Overall Skill Twin: ${escapeHtml(skillTwin.overallScore ?? 'Unavailable')} / 100 · Sessions: ${allSessions.length}</p>
-        <h2>Digital Skill Twin</h2><table><thead><tr><th>Skill</th><th>Score</th></tr></thead><tbody>${skills || '<tr><td colspan="2">No Skill Twin scores available.</td></tr>'}</tbody></table>
-        <h2>Training history</h2>${sessionRows || '<p>No training sessions are available.</p>'}
+        <h1>ResQVerse Computer Lab Fire Safety Report</h1>
+        <p><strong>Trainee:</strong> ${escapeHtml(user.name || 'Unavailable')} · <strong>Email:</strong> ${escapeHtml(user.email || 'Unavailable')}</p>
+        <p>Generated: ${escapeHtml(new Date().toLocaleString())} · Reported sessions: ${allSessions.length}</p>
+        ${sessionRows || '<p>No training sessions are available.</p>'}
         </body></html>`);
       reportWindow.document.close();
       reportWindow.focus();
@@ -614,18 +819,26 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-slate-400">Status: <strong className="text-white">{rep.status || 'Unavailable'}</strong></span>
-                        <span className="px-3 py-1.5 rounded-xl text-sm font-bold bg-slate-700/40 text-slate-200 border border-slate-600">
-                          {typeof rep.score === 'number' ? `Score: ${rep.score}%` : 'Score unavailable'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateAIAnalysis(rep.id)}
-                          disabled={!isCompleted || analyzingSessionId === rep.id}
-                          className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {analyzingSessionId === rep.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                          {analyzingSessionId === rep.id ? 'Analyzing…' : analysis ? 'Refresh AI Feedback' : 'Generate AI Feedback'}
-                        </button>
+                        {rep.sourceSystem === 'unity' ? (
+                          <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-700/40 text-slate-200 border border-slate-600">
+                            Evidence report · score not calculated
+                          </span>
+                        ) : (
+                          <>
+                            <span className="px-3 py-1.5 rounded-xl text-sm font-bold bg-slate-700/40 text-slate-200 border border-slate-600">
+                              {typeof rep.score === 'number' ? `Score: ${rep.score}%` : 'Score unavailable'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateAIAnalysis(rep.id)}
+                              disabled={!isCompleted || analyzingSessionId === rep.id}
+                              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {analyzingSessionId === rep.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                              {analyzingSessionId === rep.id ? 'Analyzing…' : analysis ? 'Refresh AI Feedback' : 'Generate AI Feedback'}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
@@ -633,7 +846,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         <span className="font-semibold text-slate-400 block mb-1">Training Time</span>
                         <p className="text-white font-semibold">
                           {typeof rep.unityMetrics?.totalResponseTime === 'number'
-                            ? `${rep.unityMetrics.totalResponseTime.toFixed(2)} sec`
+                            ? `${rep.unityMetrics.totalResponseTime.toFixed(2)} s`
                             : 'Unavailable'}
                         </p>
                       </div>
@@ -642,7 +855,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         <span className="font-semibold text-slate-400 block mb-1">Power Isolation</span>
                         <p className="text-white font-semibold">
                           {typeof rep.unityMetrics?.powerIsolationTime === 'number'
-                            ? `${rep.unityMetrics.powerIsolationTime.toFixed(2)} sec`
+                            ? `${rep.unityMetrics.powerIsolationTime.toFixed(2)} s`
                             : 'Unavailable'}
                         </p>
                       </div>
@@ -651,7 +864,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         <span className="font-semibold text-slate-400 block mb-1">Extinguisher Pin Removal</span>
                         <p className="text-white font-semibold">
                           {typeof rep.unityMetrics?.pinRemovalTime === 'number'
-                            ? `${rep.unityMetrics.pinRemovalTime.toFixed(2)} sec`
+                            ? `${rep.unityMetrics.pinRemovalTime.toFixed(2)} s`
                             : 'Unavailable'}
                         </p>
                       </div>
@@ -660,7 +873,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         <span className="font-semibold text-slate-400 block mb-1">Extinguishing Time</span>
                         <p className="text-white font-semibold">
                           {typeof rep.unityMetrics?.extinguishingTime === 'number'
-                            ? `${rep.unityMetrics.extinguishingTime.toFixed(2)} sec`
+                            ? `${rep.unityMetrics.extinguishingTime.toFixed(2)} s`
                             : 'Unavailable'}
                         </p>
                       </div>
@@ -697,7 +910,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         </p>
                       </div>
                     </div>
-                    {analysis && (
+                    {analysis && rep.sourceSystem !== 'unity' && (
                       <section className="mt-5 rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-4" aria-label="AI session feedback">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <h4 className="font-semibold text-cyan-200">AI feedback</h4>

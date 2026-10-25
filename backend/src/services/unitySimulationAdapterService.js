@@ -6,11 +6,10 @@ const unityUserMappingService = require("./unityUserMappingService");
 const performanceFeatureService = require("./performanceFeatureService");
 const skillTwinService = require("./skillTwinService");
 const feedbackService = require("./feedbackService");
-const { calculateObservedSessionScore } = require("../utils/scoring");
 const { EVENT_TYPES, SESSION_STATUS } = require("../utils/constants");
 const logger = require("../utils/logger");
 
-const OBJECTIVE_FLAGS = ["pinWasRemoved", "powerWasTurnedOff"];
+const OBJECTIVE_FLAGS = ["pinWasRemoved", "powerWasTurnedOff", "fireWasExtinguished"];
 
 function createUnitySessionId(simulationId) {
     return `unity_${createHash("sha256").update(simulationId).digest("hex")}`;
@@ -87,6 +86,9 @@ function convertUnitySimulation(simulation) {
     if (simulation.procedureViolation !== undefined && simulation.procedureViolation !== null && typeof simulation.procedureViolation !== "boolean") {
         throw new Error("Invalid Unity simulation telemetry: procedureViolation must be a boolean.");
     }
+    if (simulation.fireWasExtinguished !== undefined && simulation.fireWasExtinguished !== null && typeof simulation.fireWasExtinguished !== "boolean") {
+        throw new Error("Invalid Unity simulation telemetry: fireWasExtinguished must be a boolean.");
+    }
 
     const eventsProvided = Array.isArray(simulation.events);
     const sourceEvents = eventsProvided ? simulation.events : [];
@@ -113,37 +115,19 @@ function convertUnitySimulation(simulation) {
         : simulation.procedureViolation === false
             ? Math.max(0, observedSafetyViolations || 0)
             : observedSafetyViolations;
-    const decisionAccuracy = decisionCount > 0 ? extracted.decisionAccuracy : null;
-    const hasProcedureViolationEvent = hasEventType("SAFETY_VIOLATION");
-    const protocolCompliance = simulation.procedureViolation === true || hasProcedureViolationEvent
-        ? 0
-        : simulation.procedureViolation === false
-            ? 100
-            : null;
-    const scoreComponents = {
-        objectiveCompletionRate,
-        decisionAccuracy,
-        protocolCompliance
-    };
-    const score = calculateObservedSessionScore(scoreComponents);
-
-    const skillScores = {};
-    if (decisionAccuracy !== null) skillScores.decisionMaking = decisionAccuracy;
-    if (protocolCompliance !== null) skillScores.safetyAwareness = protocolCompliance;
-    if (objectiveCompletionRate !== null) skillScores.emergencyResponse = objectiveCompletionRate;
 
     const features = {
         source: "unity-simulation",
         observedMetrics: [
             ...(objectiveCount > 0 ? ["objectiveCompletionRate"] : []),
-            ...(decisionAccuracy !== null ? ["decisionAccuracy"] : []),
-            ...(protocolCompliance !== null ? ["protocolCompliance"] : []),
             ...(events.length > 0 ? ["eventTelemetry"] : []),
             ...Object.keys(unityMetrics)
         ],
-        scoreComponents,
-        skillScores,
+        scoreComponents: {},
+        skillScores: {},
         objectiveFlags,
+        fireWasExtinguished: simulation.fireWasExtinguished ?? null,
+        events,
         objectivesCompleted: objectiveCount > 0
             ? completedObjectives
             : hasEventType("OBJECTIVE_COMPLETED")
@@ -152,7 +136,7 @@ function convertUnitySimulation(simulation) {
         objectiveCompletionRate,
         correctDecisions: decisionCount > 0 ? extracted.correctDecisions : null,
         wrongDecisions: decisionCount > 0 ? extracted.wrongDecisions : null,
-        decisionAccuracy,
+        decisionAccuracy: null,
         safetyViolations,
         hazardsDetected: hasEventType("HAZARD_DETECTED") ? extracted.hazardsDetected : null,
         hazardsIgnored: hasEventType("HAZARD_IGNORED") ? extracted.hazardsIgnored : null,
@@ -163,7 +147,7 @@ function convertUnitySimulation(simulation) {
         eventCount: eventsProvided ? sourceEvents.length : null,
         unityMetrics
     };
-    features.score = score;
+    features.score = null;
 
     return {
         simulationId: simulation.simulationId,
@@ -172,7 +156,7 @@ function convertUnitySimulation(simulation) {
         fireLocation: simulation.fireLocation ?? null,
         completionStatus: simulation.completionStatus,
         completedAt,
-        score,
+        score: null,
         features
     };
 }
@@ -231,9 +215,10 @@ function createUnitySimulationAdapterService({
                 completionStatus: normalized.completionStatus,
                 pinWasRemoved: normalized.features.objectiveFlags.pinWasRemoved ?? null,
                 powerWasTurnedOff: normalized.features.objectiveFlags.powerWasTurnedOff ?? null,
-                procedureViolation: normalized.features.scoreComponents.protocolCompliance === null
+                fireWasExtinguished: normalized.features.fireWasExtinguished,
+                procedureViolation: normalized.features.safetyViolations === null
                     ? null
-                    : normalized.features.scoreComponents.protocolCompliance === 0,
+                    : normalized.features.safetyViolations > 0,
                 unityMetrics: normalized.features.unityMetrics,
                 performanceFeatures: normalized.features,
                 analyticsStatus: "pending",

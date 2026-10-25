@@ -32,6 +32,9 @@ const EVENT_TYPES = [
     "VICTIM_DETECTED",
     "VICTIM_RESCUED",
     "FIRE_EXTINGUISHED",
+    "POWER_ISOLATED",
+    "EXTINGUISHER_PIN_REMOVED",
+    "EXTINGUISHING_STARTED",
     "DOOR_OPENED",
     "WRONG_DECISION",
     "CORRECT_DECISION",
@@ -88,5 +91,4 @@ module.exports = {
     TRENDS,
     DEFAULT_ALLOWED_SCENARIOS: ["fire", "flood", "earthquake"]
 };
-
 

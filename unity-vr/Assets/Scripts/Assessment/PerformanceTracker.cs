@@ -57,6 +57,7 @@ namespace ResQVerse.Assessment
             if (_powerWasTurnedOff == true) return;
             _powerWasTurnedOff = true;
             _powerIsolationTime = (float)_clock.Elapsed.TotalSeconds;
+            _eventTracker.Record("POWER_ISOLATED");
             _eventTracker.RecordObjectiveCompleted();
         }
 
@@ -66,6 +67,7 @@ namespace ResQVerse.Assessment
             if (_pinWasRemoved == true) return;
             _pinWasRemoved = true;
             _pinRemovalTime = (float)_clock.Elapsed.TotalSeconds;
+            _eventTracker.Record("EXTINGUISHER_PIN_REMOVED");
             _eventTracker.RecordObjectiveCompleted();
         }
 
@@ -73,7 +75,10 @@ namespace ResQVerse.Assessment
         {
             EnsureRunning();
             if (!_extinguishingStartedAt.HasValue)
+            {
                 _extinguishingStartedAt = (float)_clock.Elapsed.TotalSeconds;
+                _eventTracker.Record("EXTINGUISHING_STARTED");
+            }
         }
 
         public void RecordFireExtinguished()
@@ -85,6 +90,7 @@ namespace ResQVerse.Assessment
                     0,
                     (float)_clock.Elapsed.TotalSeconds - (_extinguishingStartedAt ?? 0));
             _fireExtinguished = true;
+            _eventTracker.RecordObjectiveCompleted();
             _eventTracker.Record("FIRE_EXTINGUISHED");
         }
 
@@ -134,6 +140,7 @@ namespace ResQVerse.Assessment
                 fireLocation = _fireLocation,
                 completionStatus = "Completed",
                 completedAt = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+                fireWasExtinguished = _fireExtinguished,
                 totalResponseTime = (float)_clock.Elapsed.TotalSeconds,
                 powerIsolationTime = _powerIsolationTime,
                 pinRemovalTime = _pinRemovalTime,

@@ -19,7 +19,7 @@ describe("Unity simulation result access", () => {
         assert.equal(getUnityFirestore(), db);
     });
 
-    test("converts available Unity telemetry to existing performance features and partial Skill Twin scores", () => {
+    test("converts Unity telemetry without inventing session or Skill Twin scores", () => {
         const normalized = convertUnitySimulation({
             simulationId: "simulation-123",
             simulationType: "Fire",
@@ -32,6 +32,7 @@ describe("Unity simulation result access", () => {
             extinguishingTime: 22,
             pinWasRemoved: true,
             powerWasTurnedOff: false,
+            fireWasExtinguished: true,
             procedureViolation: false,
             events: [
                 { eventType: "CORRECT_DECISION", timestamp: "2026-10-04T09:59:00Z" },
@@ -40,32 +41,32 @@ describe("Unity simulation result access", () => {
             ]
         });
 
-        assert.equal(normalized.score, 67);
-        assert.equal(normalized.features.objectiveCompletionRate, 50);
-        assert.equal(normalized.features.decisionAccuracy, 50);
+        assert.equal(normalized.score, null);
+        assert.equal(normalized.features.objectiveCompletionRate, 67);
+        assert.equal(normalized.features.objectiveFlags.fireWasExtinguished, true);
+        assert.equal(normalized.features.decisionAccuracy, null);
         assert.equal(normalized.features.safetyViolations, 0);
-        assert.deepEqual(normalized.features.skillScores, {
-            decisionMaking: 50,
-            safetyAwareness: 100,
-            emergencyResponse: 50
-        });
+        assert.deepEqual(normalized.features.skillScores, {});
+        assert.deepEqual(normalized.features.scoreComponents, {});
         assert.equal(normalized.features.unityMetrics.totalResponseTime, 42);
         assert.equal(normalized.features.unityMetrics.powerIsolationTime, 8);
+        assert.equal(normalized.features.events.length, 3);
+        assert.equal(normalized.features.events[0].eventType, "CORRECT_DECISION");
         assert.equal(normalized.features.evacuationTime, undefined);
         assert.equal(normalized.features.victimsRescued, null);
     });
 
-    test("does not score protocol compliance when an event records a violation", () => {
+    test("preserves recorded violations without calculating a protocol score", () => {
         const normalized = convertUnitySimulation(validUnitySimulation({
             procedureViolation: false,
             events: [{ eventType: "SAFETY_VIOLATION" }]
         }));
 
         assert.equal(normalized.features.safetyViolations, 1);
-        assert.equal(normalized.features.scoreComponents.protocolCompliance, 0);
+        assert.deepEqual(normalized.features.scoreComponents, {});
     });
 
-    test("ignores negative duration sentinels, rejects malformed Unity telemetry, and leaves unavailable scores uncalculated", () => {
+    test("ignores negative duration sentinels, rejects malformed telemetry, and leaves scores uncalculated", () => {
         assert.throws(
             () => convertUnitySimulation({ simulationType: "Fire" }),
             /simulationId is required/
@@ -77,6 +78,10 @@ describe("Unity simulation result access", () => {
         assert.equal(legacyDuration.features.unityMetrics.pinRemovalTime, undefined);
         assert.equal(legacyDuration.features.unityMetrics.powerIsolationTime, 8);
         assert.equal(legacyDuration.features.observedMetrics.includes("pinRemovalTime"), false);
+        assert.throws(
+            () => convertUnitySimulation(validUnitySimulation({ fireWasExtinguished: "yes" })),
+            /fireWasExtinguished must be a boolean/
+        );
         assert.throws(
             () => convertUnitySimulation(validUnitySimulation({ powerIsolationTime: "8" })),
             /powerIsolationTime must be a finite number/
@@ -149,8 +154,7 @@ describe("Unity simulation result access", () => {
             correctDecisions: 1,
             wrongDecisions: 1,
             safetyViolations: 1,
-            hazardsDetected: 2,
-            hazardsIgnored: 1,
+            fireWasExtinguished: false,
             unityMetrics: {
                 powerIsolationTime: 8,
                 pinRemovalTime: 12
@@ -160,17 +164,17 @@ describe("Unity simulation result access", () => {
         assert.deepEqual(feedback.observations, [
             "Power isolation: not completed.",
             "Fire extinguisher pin removal: completed.",
-            "Decision accuracy: 50% (1 of 2 recorded decisions correct).",
+            "Fire extinguished: no.",
             "Procedure violations recorded: 1.",
+            "Incorrect decisions recorded: 1.",
             "Power isolation time: 8 sec.",
-            "Pin removal time: 12 sec.",
-            "Hazards detected: 2.",
-            "Hazards ignored: 1."
+            "Pin removal time: 12 sec."
         ]);
         assert.ok(feedback.strengths.includes("Completed objectives: Fire extinguisher pin removal."));
         assert.ok(feedback.weaknesses.includes("Power isolation was not completed in the recorded simulation."));
         assert.ok(feedback.weaknesses.includes("Unity recorded 1 incorrect decision."));
-        assert.ok(feedback.weaknesses.includes("Unity recorded 1 procedure violation."));
+        assert.ok(feedback.weaknesses.includes("Unity recorded 1 procedural violation."));
+        assert.ok(feedback.weaknesses.includes("Unity did not record the fire as extinguished."));
         assert.ok(feedback.recommendations.includes("Review the power isolation objective before the next simulation."));
         assert.ok(!feedback.strengths.includes("Completed all tracked Unity simulation objectives"));
         assert.ok(!feedback.recommendations.includes("Review the required procedure sequence before the next simulation"));
@@ -247,9 +251,12 @@ describe("Unity simulation result access", () => {
         assert.equal(firstImport[0].sourceSimulationId, "simulation-123");
         assert.equal(firstImport[0].status, "completed");
         assert.equal(firstImport[0].analyticsStatus, "completed");
-        assert.equal(calls.skillTwin, 1);
+        assert.equal(calls.skillTwin, 0);
         assert.equal(calls.feedback, 1);
         assert.equal(platformDb.count("trainingSessions"), 1);
+        assert.equal(firstImport[0].score, null);
+        assert.equal(firstImport[0].skillTwinScore, undefined);
+        assert.deepEqual(firstImport[0].performanceFeatures.skillScores, {});
     });
 
     test("syncs same-project Unity results using the trainee UID when no legacy mapping exists", async () => {

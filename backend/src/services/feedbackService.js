@@ -19,7 +19,6 @@ function buildUnitySimulationFeedback(features = {}) {
     const weaknesses = [];
     const recommendations = [];
     const observations = [];
-    const scoreComponents = features.scoreComponents || {};
     const objectiveFlags = features.objectiveFlags || {};
     const completedObjectives = [];
     const incompleteObjectives = [];
@@ -38,44 +37,36 @@ function buildUnitySimulationFeedback(features = {}) {
         recommendations.push(`Review the ${objective.toLowerCase()} objective before the next simulation.`);
     }
 
-    const correctDecisions = features.correctDecisions;
-    const wrongDecisions = features.wrongDecisions;
-    const decisionAccuracy = scoreComponents.decisionAccuracy;
-    if (typeof decisionAccuracy === "number" && Number.isFinite(decisionAccuracy)) {
-        const decisionCount = Number.isFinite(correctDecisions) && Number.isFinite(wrongDecisions)
-            ? correctDecisions + wrongDecisions
-            : null;
-        observations.push(
-            decisionCount === null
-                ? `Decision accuracy: ${decisionAccuracy}%.`
-                : `Decision accuracy: ${decisionAccuracy}% (${correctDecisions} of ${decisionCount} recorded decisions correct).`
-        );
-        if (decisionCount > 0 && wrongDecisions === 0) {
-            strengths.push(`All ${decisionCount} recorded decisions were correct.`);
-        } else if (Number.isFinite(wrongDecisions) && wrongDecisions > 0) {
-            weaknesses.push(`Unity recorded ${wrongDecisions} incorrect decision${wrongDecisions === 1 ? "" : "s"}.`);
-            recommendations.push("Review the recorded incorrect decisions with a trainer before repeating the scenario.");
+    if (typeof features.fireWasExtinguished === "boolean") {
+        observations.push(`Fire extinguished: ${features.fireWasExtinguished ? "yes" : "no"}.`);
+        if (features.fireWasExtinguished) {
+            strengths.push("Unity recorded that the fire was extinguished.");
+        } else {
+            weaknesses.push("Unity did not record the fire as extinguished.");
+            recommendations.push("Practice extinguisher operation until the fire-extinguished objective is recorded.");
         }
     }
 
-    const protocolCompliance = scoreComponents.protocolCompliance;
-    if (typeof protocolCompliance === "number" && Number.isFinite(protocolCompliance)) {
-        if (protocolCompliance === 100) {
-            observations.push("Procedure violations: 0.");
-            strengths.push("Unity recorded no procedure violations.");
-        } else if (protocolCompliance < 100) {
-            const violations = Number.isFinite(features.safetyViolations) ? features.safetyViolations : null;
-            observations.push(
-                violations === null
-                    ? `Protocol compliance: ${protocolCompliance}%.`
-                    : `Procedure violations recorded: ${violations}.`
-            );
-            weaknesses.push(
-                violations === null
-                    ? `Unity recorded protocol compliance at ${protocolCompliance}%.`
-                    : `Unity recorded ${violations} procedure violation${violations === 1 ? "" : "s"}.`
-            );
+    if (Number.isFinite(features.safetyViolations) && features.safetyViolations >= 0) {
+        observations.push(`Procedure violations recorded: ${features.safetyViolations}.`);
+        if (features.safetyViolations === 0) {
+            strengths.push("Unity recorded no procedural violations.");
+        } else {
+            weaknesses.push(`Unity recorded ${features.safetyViolations} procedural violation${features.safetyViolations === 1 ? "" : "s"}.`);
             recommendations.push("Review the recorded procedure violation with a trainer before the next simulation.");
+        }
+    }
+
+    if (Number.isFinite(features.wrongDecisions) && features.wrongDecisions > 0) {
+        observations.push(`Incorrect decisions recorded: ${features.wrongDecisions}.`);
+        weaknesses.push(`Unity recorded ${features.wrongDecisions} incorrect decision${features.wrongDecisions === 1 ? "" : "s"}.`);
+        recommendations.push("Review the recorded incorrect decisions with a trainer before repeating the scenario.");
+    }
+
+    for (const event of features.events || []) {
+        if (event.eventType === "SAFETY_VIOLATION") {
+            const detail = typeof event.metadata?.action === "string" ? ` during ${event.metadata.action}` : "";
+            observations.push(`Safety violation recorded${detail}${event.timestamp ? ` at ${event.timestamp}` : ""}.`);
         }
     }
 
@@ -83,17 +74,6 @@ function buildUnitySimulationFeedback(features = {}) {
         const value = features.unityMetrics?.[key];
         if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
             observations.push(`${label}: ${value} sec.`);
-        }
-    }
-
-    for (const [key, label] of [["hazardsDetected", "Hazards detected"], ["hazardsIgnored", "Hazards ignored"]]) {
-        const count = features[key];
-        if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
-            observations.push(`${label}: ${count}.`);
-            if (key === "hazardsIgnored" && count > 0) {
-                weaknesses.push(`Unity recorded ${count} ignored hazard${count === 1 ? "" : "s"}.`);
-                recommendations.push("Review the ignored hazard events with a trainer before repeating the scenario.");
-            }
         }
     }
 
@@ -182,14 +162,13 @@ class FeedbackService {
     }
 
     async generateUnitySimulationFeedback(traineeId, sessionId, features, skillTwin) {
-        const scoreComponents = features.scoreComponents || {};
         const { strengths, weaknesses, recommendations, observations } = buildUnitySimulationFeedback(features);
 
         const feedbackRecord = {
             traineeId,
             sessionId,
-            performanceScore: typeof features.score === "number" ? features.score : null,
-            riskLevel: scoreComponents.protocolCompliance === 0 ? "HIGH" : "LOW",
+            performanceScore: null,
+            riskLevel: null,
             strengths,
             weaknesses,
             recommendations,

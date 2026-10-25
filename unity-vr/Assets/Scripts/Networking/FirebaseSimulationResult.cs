@@ -12,6 +12,7 @@ namespace ResQVerse.Unity
         public string fireLocation;
         public string completionStatus;
         public string completedAt;
+        public bool? fireWasExtinguished;
         public float? totalResponseTime;
         public float? powerIsolationTime;
         public float? pinRemovalTime;
