@@ -7,6 +7,18 @@ const calculateSessionScore = (hazardsAvoided, totalHazards, casualtiesRescued, 
     return Math.min(Math.max(total, 0), 100);
 };
 
+const calculateObservedSessionScore = ({ objectiveCompletionRate, decisionAccuracy, protocolCompliance } = {}) => {
+    const observedMetrics = [objectiveCompletionRate, decisionAccuracy, protocolCompliance]
+        .filter(value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100);
+
+    if (observedMetrics.length === 0) {
+        return null;
+    }
+
+    return Math.round(observedMetrics.reduce((total, value) => total + value, 0) / observedMetrics.length);
+};
+
 module.exports = {
-    calculateSessionScore
+    calculateSessionScore,
+    calculateObservedSessionScore
 };

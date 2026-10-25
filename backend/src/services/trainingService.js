@@ -6,31 +6,61 @@ const eventService = require("./eventService");
 const performanceFeatureService = require("./performanceFeatureService");
 const skillTwinService = require("./skillTwinService");
 const feedbackService = require("./feedbackService");
+const unitySimulationAdapterService = require("./unitySimulationAdapterService");
 const logger = require("../utils/logger");
 
 const { hasScenarioAccess } = require("../middleware/permissionMiddleware");
 
 class TrainingService {
-    async createSession(scenarioId, traineeId, userAllowedScenarios = null) {
-        const scenarioDoc = await db.collection("scenarios").doc(scenarioId).get();
-        if (!scenarioDoc.exists) {
-            const err = new Error("Scenario not found");
-            err.statusCode = 404;
-            err.errorCode = "NOT_FOUND";
-            throw err;
-        }
+    async createSession(scenarioId, traineeId, userAllowedScenarios = null, assignmentId = null) {
+        let scenarioData;
+        if (assignmentId) {
+            const assignmentDoc = await db.collection("trainingAssignments").doc(assignmentId).get();
+            if (!assignmentDoc.exists) {
+                const err = new Error("Training assignment not found");
+                err.statusCode = 404;
+                err.errorCode = "NOT_FOUND";
+                throw err;
+            }
 
-        const scenarioData = scenarioDoc.data();
-        if (userAllowedScenarios && !hasScenarioAccess(userAllowedScenarios, scenarioData.disasterType)) {
-            const err = new Error(`Access denied: You do not have permission for '${scenarioData.disasterType || "this"}' scenario`);
-            err.statusCode = 403;
-            err.errorCode = "FORBIDDEN";
-            throw err;
+            const assignment = assignmentDoc.data();
+            if (
+                assignment.assignmentType !== "trainee" ||
+                assignment.traineeId !== traineeId ||
+                assignment.scenarioId !== scenarioId
+            ) {
+                const err = new Error("Training assignment does not belong to this trainee");
+                err.statusCode = 403;
+                err.errorCode = "FORBIDDEN";
+                throw err;
+            }
+
+            scenarioData = {
+                title: assignment.simulationType,
+                ...(assignment.fireLocation ? { fireLocation: assignment.fireLocation } : {})
+            };
+        } else {
+            const scenarioDoc = await db.collection("scenarios").doc(scenarioId).get();
+            if (!scenarioDoc.exists) {
+                const err = new Error("Scenario not found");
+                err.statusCode = 404;
+                err.errorCode = "NOT_FOUND";
+                throw err;
+            }
+
+            scenarioData = scenarioDoc.data();
+            if (userAllowedScenarios && !hasScenarioAccess(userAllowedScenarios, scenarioData.disasterType)) {
+                const err = new Error(`Access denied: You do not have permission for '${scenarioData.disasterType || "this"}' scenario`);
+                err.statusCode = 403;
+                err.errorCode = "FORBIDDEN";
+                throw err;
+            }
         }
 
         const session = {
             traineeId,
             scenarioId,
+            ...(assignmentId ? { assignmentId, scenario: scenarioData.title } : {}),
             status: SESSION_STATUS.CREATED,
             startedAt: null,
             completedAt: null,
@@ -61,6 +91,10 @@ class TrainingService {
     }
 
     async getUserSessions(traineeId, req) {
+        if (req.user?.role === "trainee") {
+            await unitySimulationAdapterService.syncTraineeSimulations(traineeId);
+        }
+
         let query = db.collection("trainingSessions")
             .where("traineeId", "==", traineeId);
 
@@ -208,4 +242,3 @@ class TrainingService {
 }
 
 module.exports = new TrainingService();
-

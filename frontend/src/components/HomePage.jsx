@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './Navbar';
+import SkillTwinPanel from './SkillTwinPanel';
 import { 
   Shield, 
   Flame, 
@@ -19,18 +20,14 @@ import {
   Award,
   Server,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Phone,
+  Mail
 } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
-  const [systemStats, setSystemStats] = useState({
-    activeScenarios: 3,
-    systemStatus: 'ONLINE',
-    telemetryFeatures: 17,
-    skillDimensions: 7,
-    uptime: '100%'
-  });
+export default function HomePage({ onNavigate, currentPath, user, onLogout, logoutError, theme, onToggleTheme }) {
+  const [systemStats, setSystemStats] = useState({ systemStatus: 'CHECKING', uptime: null });
 
   useEffect(() => {
     // Fetch live system statistics from backend health API if available
@@ -38,14 +35,12 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
       try {
         const healthRes = await api('/health');
         if (healthRes && healthRes.status === 'UP') {
-          setSystemStats(prev => ({
-            ...prev,
-            systemStatus: 'OPERATIONAL',
-            uptime: `${Math.round(healthRes.uptime || 100)}s Uptime`
-          }));
+          setSystemStats({ systemStatus: 'OPERATIONAL', uptime: typeof healthRes.uptime === 'number' ? `${Math.round(healthRes.uptime)}s Uptime` : null });
+        } else {
+          setSystemStats({ systemStatus: 'UNAVAILABLE', uptime: null });
         }
       } catch (err) {
-        // Fallback to operational defaults if offline
+        setSystemStats({ systemStatus: 'UNAVAILABLE', uptime: null });
       }
     };
     fetchStats();
@@ -60,13 +55,13 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
         currentPath={currentPath} 
         user={user} 
         onLogout={onLogout} 
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
+      {logoutError && <div role="alert" className="fixed left-1/2 top-24 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-lg border border-red-300 bg-red-50 p-3 text-center text-sm text-red-800 shadow-lg">{logoutError}</div>}
 
       {/* Main Content Wrapper */}
-      <main className="relative overflow-hidden">
-        
-        {/* Decorative subtle background grid */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40 pointer-events-none" />
+      <main className="home-main-surface relative overflow-hidden">
 
         {/* 1. HERO SECTION */}
         <section className="relative pt-12 pb-20 lg:pt-16 lg:pb-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -336,8 +331,8 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
                     <Flame className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-2xl font-black text-slate-900">{systemStats.activeScenarios}</div>
-                    <div className="text-xs font-semibold text-slate-500">Active Disaster Scenarios</div>
+                    <div className="text-2xl font-black text-slate-900">—</div>
+                    <div className="text-xs font-semibold text-slate-500">Scenario count not reported by health API</div>
                   </div>
                 </div>
 
@@ -347,8 +342,8 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
                     <Cpu className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-2xl font-black text-slate-900">{systemStats.telemetryFeatures}</div>
-                    <div className="text-xs font-semibold text-slate-500">Telemetry Features Tracked</div>
+                    <div className="text-2xl font-black text-slate-900">—</div>
+                    <div className="text-xs font-semibold text-slate-500">Telemetry count not reported by health API</div>
                   </div>
                 </div>
 
@@ -358,8 +353,8 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
                     <BarChart2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-2xl font-black text-slate-900">{systemStats.skillDimensions}</div>
-                    <div className="text-xs font-semibold text-slate-500">Digital Skill Twin Dimensions</div>
+                    <div className="text-2xl font-black text-slate-900">—</div>
+                    <div className="text-xs font-semibold text-slate-500">Skill metric count not reported by health API</div>
                   </div>
                 </div>
 
@@ -485,6 +480,11 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
             </div>
 
           </div>
+
+          {/* Interactive AI Telemetry & Skill Twin Playground */}
+          <div className="mt-12">
+            <SkillTwinPanel user={user} />
+          </div>
         </section>
 
 
@@ -588,13 +588,46 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
           </div>
         </section>
 
+        <section id="contact" className="border-y border-slate-200 bg-white py-16 sm:py-20">
+          <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 sm:px-6 lg:grid-cols-12 lg:px-8">
+            <div className="space-y-4 lg:col-span-7">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#f95738]">Contact & Support</span>
+              <h2 className="max-w-2xl text-3xl font-black text-slate-900">Need help with your training?</h2>
+              <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
+                For account access, trainer approval, scenario permissions, or training issues, get in touch with the ResQVerse team.
+              </p>
+            </div>
+            <div className="flex flex-col justify-center gap-6 border-t border-slate-200 pt-6 lg:col-span-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <a href="tel:8080444444" className="contact-method group min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-orange-300 hover:bg-orange-50">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Phone className="h-4 w-4 text-orange-600" /> Phone</span>
+                  <span className="block break-words text-sm font-bold text-slate-900 group-hover:text-orange-700">8080444444</span>
+                </a>
+                <a href="mailto:resqverse@gamil.com" className="contact-method group min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-orange-300 hover:bg-orange-50">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Mail className="h-4 w-4 text-orange-600" /> Email</span>
+                  <span className="block break-all text-sm font-bold text-slate-900 group-hover:text-orange-700">resqverse@gamil.com</span>
+                </a>
+              </div>
+              <div className="space-y-3 border-t border-slate-200 pt-5">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Account options</h3>
+                <div className="flex flex-wrap gap-3">
+                <button onClick={() => onNavigate(user ? '/dashboard' : '/login')} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#f95738] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e04729]">
+                  {user ? 'Open dashboard' : 'Sign in'}
+                </button>
+                {!user && <button onClick={() => onNavigate('/signup')} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100">Create account</button>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
 
         {/* 7. FINAL CTA SECTION (NAVY PANEL) */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-20">
           <div className="bg-[#0f172a] rounded-3xl p-8 sm:p-12 text-white shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-8">
             <div className="space-y-3 max-w-xl text-center sm:text-left">
-              <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 mx-auto sm:mx-0">
-                <Shield className="w-6 h-6" />
+              <div className="w-12 h-12 shrink-0 overflow-hidden rounded-2xl border border-orange-500/40 mx-auto sm:mx-0">
+                <img src="/images/VRlogo.jpeg" alt="ResQVerse logo" className="h-full w-full object-cover" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 Ready to Build Skills That Save Lives?
@@ -626,21 +659,22 @@ export default function HomePage({ onNavigate, currentPath, user, onLogout }) {
       {/* 8. FOOTER */}
       <footer id="footer" className="bg-white border-t border-slate-200 py-12 text-slate-600 text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-              <Shield className="w-5 h-5 text-orange-400" />
+          <button type="button" onClick={() => onNavigate('/')} aria-label="ResQVerse home" className="flex items-center gap-3 rounded-lg text-left hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500">
+            <div className="w-9 h-9 shrink-0 overflow-hidden rounded-xl">
+              <img src="/images/VRlogo.jpeg" alt="ResQVerse logo" className="h-full w-full object-cover" />
             </div>
             <div>
               <span className="font-black text-slate-900 text-base block leading-none">ResQVerse</span>
               <span className="text-[10px] text-slate-500 font-semibold">VR Disaster Training & AI</span>
             </div>
-          </div>
+          </button>
 
           <div className="flex flex-wrap items-center gap-6 font-semibold text-slate-600">
             <button onClick={() => onNavigate('/')} className="hover:text-slate-900 transition-colors">Home</button>
             <button onClick={() => { const e = document.querySelector('#about'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-slate-900 transition-colors">About</button>
             <button onClick={() => { const e = document.querySelector('#features'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-slate-900 transition-colors">Features</button>
             <button onClick={() => { const e = document.querySelector('#training'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-slate-900 transition-colors">Training</button>
+            <button onClick={() => { const e = document.querySelector('#contact'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-slate-900 transition-colors">Contact</button>
             <button onClick={() => onNavigate('/login')} className="hover:text-slate-900 transition-colors">Login</button>
             <button onClick={() => onNavigate('/signup')} className="hover:text-slate-900 transition-colors">Sign Up</button>
           </div>

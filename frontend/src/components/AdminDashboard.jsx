@@ -1,85 +1,117 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, BookOpen, ClipboardList, FileText, LogOut, Plus, Shield, Sparkles, CheckCircle, UserCheck } from 'lucide-react';
+import { LayoutDashboard, Users, BookOpen, ClipboardList, FileText, LogOut, Shield, Sparkles, CheckCircle, UserCheck, Menu, X, AlertCircle, Search } from 'lucide-react';
 import { fetchAdminDashboard } from '../services/dashboardService';
 import { adminService } from '../services/adminService';
+import { fetchScenarios, fetchUnityScenarios } from '../services/scenarioService';
+import ThemeToggle from './ThemeToggle';
 
-export default function AdminDashboard({ user, onLogout }) {
+export default function AdminDashboard({ user, onLogout, onNavigate, theme, onToggleTheme }) {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [adminStats, setAdminStats] = useState({ totalUsers: 3, totalTrainees: 2, totalTrainers: 1, totalScenarios: 3, totalSessions: 5 });
-  const [trainees, setTrainees] = useState([
-    { id: 'usr-01', uid: 'usr-01', name: 'Manav Vartak', email: 'manav@ResQVerse.vr', role: 'trainee', dept: 'CS Lab', completed: 3, avgScore: '83%', allowedScenarios: ['fire', 'flood', 'earthquake'] },
-    { id: 'usr-02', uid: 'usr-02', name: 'Priya Sharma', email: 'priya@ResQVerse.vr', role: 'trainee', dept: 'Electronics', completed: 2, avgScore: '91%', allowedScenarios: ['fire', 'earthquake'] }
-  ]);
-
-  const [simulations] = useState([
-    { id: 1, title: 'Fire in Classroom', category: 'Fire Safety', difficulty: 'Intermediate' },
-    { id: 2, title: 'Flood in Building', category: 'Water Hazard', difficulty: 'Advanced' },
-    { id: 3, title: 'Earthquake Drill', category: 'Seismic', difficulty: 'Beginner' }
-  ]);
-
-  const [assignments] = useState([
-    { id: 1, training: 'Fire in Computer Lab', trainee: 'Manav Vartak', dueDate: '10 Sep 2026', status: 'Pending' },
-    { id: 2, training: 'Flood in Office Building', trainee: 'Priya Sharma', dueDate: '15 Sep 2026', status: 'Pending' }
-  ]);
-
-  const [newAssignModal, setNewAssignModal] = useState(false);
+  const [adminStats, setAdminStats] = useState(null);
+  const [trainees, setTrainees] = useState([]);
+  const [simulations, setSimulations] = useState([]);
+  const [unityScenarios, setUnityScenarios] = useState([]);
+  const [unityScenarioError, setUnityScenarioError] = useState('');
+  const [selectedTrainerId, setSelectedTrainerId] = useState('');
+  const [pendingAssignmentId, setPendingAssignmentId] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loadError, setLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [pendingPermissionIds, setPendingPermissionIds] = useState(() => new Set());
+  const [showReportPreview, setShowReportPreview] = useState(false);
 
   useEffect(() => {
     async function loadAdminData() {
       try {
-        const [statsData, userList] = await Promise.all([
+        const [statsData, userList, scenarioList] = await Promise.all([
           fetchAdminDashboard(),
-          adminService.fetchUsers()
+          adminService.fetchUsers(),
+          fetchScenarios()
         ]);
-        if (statsData) setAdminStats(statsData);
-        if (userList && userList.length > 0) {
-          const mappedUsers = userList.map((u, idx) => ({
-            id: u.uid || `usr-${idx}`,
+        setAdminStats(statsData);
+        setSimulations(Array.isArray(scenarioList) ? scenarioList : []);
+        setTrainees((Array.isArray(userList) ? userList : []).map(u => ({
+            id: u.uid || u.email,
             uid: u.uid,
-            name: u.name || 'ResQVerse User',
+            name: u.name,
             email: u.email || '',
-            role: u.role || 'trainee',
-            dept: u.dept || 'Department',
-            completed: u.completed || 2,
-            avgScore: u.avgScore || '85%',
-            allowedScenarios: u.allowedScenarios || ['fire', 'flood', 'earthquake'],
+            role: u.role,
+            dept: u.dept,
+            completed: u.completed,
+            avgScore: u.avgScore,
+            allowedScenarios: Array.isArray(u.allowedScenarios) ? u.allowedScenarios : [],
             assignedTrainerId: u.assignedTrainerId || null,
-            trainerAccessStatus: u.trainerAccessStatus || 'none'
-          }));
-          setTrainees(mappedUsers);
+            trainerAccessStatus: u.trainerAccessStatus || null
+          })));
+        try {
+          setUnityScenarios(await fetchUnityScenarios());
+        } catch (error) {
+          setUnityScenarioError(error.message || 'Unity scenarios could not be loaded.');
         }
       } catch (err) {
         console.warn("AdminDashboard live fetch error:", err);
+        setLoadError(true);
+      } finally {
+        setIsLoading(false);
       }
     }
     loadAdminData();
   }, []);
 
   const handleApproveTrainer = async (uid, approve = true) => {
+    setErrorMsg('');
     try {
       await adminService.approveTrainer(uid, approve);
+      setTrainees(current => current.map(t => t.uid === uid
+        ? { ...t, role: approve ? 'trainer' : t.role, trainerAccessStatus: approve ? 'approved' : 'rejected' }
+        : t));
       setSuccessMsg(`Trainer access request ${approve ? 'approved' : 'declined'}.`);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
       console.warn("Approve trainer error:", err);
+      setErrorMsg(err.message || 'Could not update trainer access. Please try again.');
     }
   };
 
   const handleAssignTrainer = async (traineeId, trainerId) => {
+    setErrorMsg('');
     try {
       await adminService.assignTrainer(traineeId, trainerId);
-      setSuccessMsg('Trainer assignment updated on backend.');
+      setTrainees(current => current.map(t => (t.uid === traineeId || t.id === traineeId)
+        ? { ...t, assignedTrainerId: trainerId || null }
+        : t));
+      setSuccessMsg('Trainer assignment updated.');
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
       console.warn("Assign trainer error:", err);
+      setErrorMsg(err.message || 'Could not assign the trainer. Please try again.');
+    }
+  };
+
+  const handleAssignScenario = async (scenario) => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setPendingAssignmentId(scenario.scenarioId);
+    try {
+      const result = await adminService.assignScenarioToTrainer(scenario.scenarioId, selectedTrainerId);
+      setSuccessMsg(result.message || 'Scenario assignment saved.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not assign the scenario. Please try again.');
+    } finally {
+      setPendingAssignmentId('');
     }
   };
 
   const handleUpdatePermissions = async (uid, scenario, isChecked) => {
+    setErrorMsg('');
+    setPendingPermissionIds(current => new Set(current).add(uid));
     try {
       const targetUser = trainees.find(t => t.uid === uid || t.id === uid);
-      const currentAllowed = targetUser ? targetUser.allowedScenarios || ['fire', 'flood', 'earthquake'] : ['fire', 'flood', 'earthquake'];
+      const currentAllowed = targetUser?.allowedScenarios || [];
       let updatedScenarios;
       if (isChecked) {
         updatedScenarios = Array.from(new Set([...currentAllowed, scenario]));
@@ -87,91 +119,77 @@ export default function AdminDashboard({ user, onLogout }) {
         updatedScenarios = currentAllowed.filter(s => s !== scenario);
       }
       await adminService.updatePermissions(uid, updatedScenarios);
-      setTrainees(trainees.map(t => (t.uid === uid || t.id === uid) ? { ...t, allowedScenarios: updatedScenarios } : t));
+      setTrainees(current => current.map(t => (t.uid === uid || t.id === uid) ? { ...t, allowedScenarios: updatedScenarios } : t));
       setSuccessMsg(`Updated scenario permissions for ${targetUser?.name || 'user'}.`);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
       console.warn("Update permissions error:", err);
+      setErrorMsg(err.message || 'Could not update scenario permissions. Please try again.');
+    } finally {
+      setPendingPermissionIds(current => {
+        const next = new Set(current);
+        next.delete(uid);
+        return next;
+      });
     }
   };
 
-  const handleAssignTraining = (e) => {
-    e.preventDefault();
-    setNewAssignModal(false);
-    setSuccessMsg('Training successfully assigned to student!');
-    setTimeout(() => setSuccessMsg(''), 3000);
+  const handleExportUsers = () => {
+    const rows = [
+      ['Name', 'Email', 'Role', 'Department'],
+      ...trainees.map(t => [t.name, t.email, t.role, t.dept])
+    ];
+    const csv = rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'resqverse-users.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
+  const pendingTrainerRequests = trainees.filter(t => t.trainerAccessStatus === 'pending' || t.trainerRequestStatus === 'pending');
+  const visibleUsers = trainees.filter(t => `${t.name} ${t.email} ${t.role} ${t.dept}`.toLowerCase().includes(userSearch.toLowerCase()));
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+    { id: 'users', label: 'Users', Icon: Users },
+    { id: 'trainings', label: 'Trainings', Icon: BookOpen },
+    { id: 'assignments', label: 'Assignments', Icon: ClipboardList },
+    { id: 'reports', label: 'Reports', Icon: FileText }
+  ];
+
   return (
-    <div className="min-h-screen flex bg-[#0a0910] text-slate-100 relative z-10">
-      <aside className="w-64 bg-[#13111c] border-r border-[#27213b] flex flex-col justify-between hidden md:flex">
+    <div className="min-h-screen flex bg-[#0b1220] text-slate-100 relative z-10">
+      <aside className={`${mobileNavOpen ? 'flex' : 'hidden'} md:flex fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#111827] border-r border-[#334155] flex-col justify-between`}>
         <div>
-          <div className="p-6 flex items-center gap-3 border-b border-[#27213b]">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
-              <Shield className="w-5 h-5" />
+          <div className="p-4 flex items-center justify-between gap-2 border-b border-[#334155]">
+            <button type="button" onClick={() => onNavigate('/')} aria-label="ResQVerse home" className="min-w-0 flex items-center gap-3 rounded-lg text-left hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400">
+            <div className="w-10 h-10 shrink-0 overflow-hidden rounded-lg shadow-lg shadow-orange-500/20">
+              <img src="/images/VRlogo.jpeg" alt="ResQVerse logo" className="h-full w-full object-cover" />
             </div>
             <div>
               <h1 className="font-black tracking-tight text-white flex items-center gap-1.5">
-                ResQVerse <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                ResQVerse <Sparkles className="w-3.5 h-3.5 text-orange-300" />
               </h1>
-              <p className="text-[10px] uppercase font-semibold text-amber-300 tracking-wider">Admin Control</p>
+              <p className="text-[10px] uppercase font-semibold text-orange-300 tracking-wider">Admin Control</p>
             </div>
+            </button>
+            <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation" className="md:hidden ml-auto p-2 text-slate-300 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           <nav className="p-4 space-y-1.5">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === 'dashboard' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-white hover:bg-[#27213b]/50'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-white hover:bg-[#27213b]/50'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Users</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('trainings')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === 'trainings' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-white hover:bg-[#27213b]/50'
-              }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>Trainings</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('assignments')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === 'assignments' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-white hover:bg-[#27213b]/50'
-              }`}
-            >
-              <ClipboardList className="w-4 h-4" />
-              <span>Assignments</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === 'reports' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-white hover:bg-[#27213b]/50'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Reports</span>
-            </button>
+            {navItems.map(({ id, label, Icon }) => (
+              <button key={id} onClick={() => { setActiveTab(id); setMobileNavOpen(false); }} aria-current={activeTab === id ? 'page' : undefined}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === id ? 'bg-[#f95738] text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}>
+                <Icon className="w-4 h-4" /><span>{label}</span>
+              </button>
+            ))}
           </nav>
         </div>
 
-        <div className="p-4 border-t border-[#27213b]">
+        <div className="p-4 border-t border-[#334155]">
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
@@ -183,18 +201,29 @@ export default function AdminDashboard({ user, onLogout }) {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="px-8 py-5 border-b border-[#27213b] bg-[#13111c]/60 backdrop-blur-md flex items-center justify-between sticky top-0 z-30">
+        <header className="px-4 md:px-8 py-4 border-b border-[#334155] bg-[#111827]/95 backdrop-blur-md flex items-center justify-between gap-3 sticky top-0 z-30">
           <div>
-            <h2 className="text-xl font-bold text-white">Admin Portal — {user.name}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-white">Welcome back, {user.name || 'Administrator'}</h2>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-300">
+                <Shield className="h-3 w-3" /> Administrator
+              </span>
+            </div>
             <p className="text-xs text-slate-400">Manage simulations, user assignments, and trainee performance.</p>
           </div>
+          <div className="flex items-center gap-2">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <button type="button" onClick={() => setMobileNavOpen(open => !open)} aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'} className="md:hidden p-2 text-slate-300 hover:text-white">
+            {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
           <button
-            onClick={() => setNewAssignModal(true)}
-            className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 shadow-md shadow-purple-600/30"
+            type="button"
+            onClick={() => setActiveTab('assignments')}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-semibold py-2.5 px-4 rounded-lg text-xs flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" />
             <span>Assign Training</span>
           </button>
+          </div>
         </header>
 
         {successMsg && (
@@ -203,44 +232,56 @@ export default function AdminDashboard({ user, onLogout }) {
             <span>{successMsg}</span>
           </div>
         )}
+        {errorMsg && <div role="alert" className="mx-4 md:mx-8 mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" /><span>{errorMsg}</span></div>}
 
-        <div className="p-8 space-y-8 flex-1">
+        <div className="p-4 md:p-8 space-y-8 flex-1">
+          {isLoading && <div role="status" className="py-12 text-center text-sm text-slate-400">Loading admin dashboard...</div>}
+          {!isLoading && loadError && <div role="alert" className="py-12 text-center text-sm text-red-300">Admin data could not be loaded. Check your connection and try again.</div>}
+          {!isLoading && !loadError && <>
           {activeTab === 'dashboard' && (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-                  <span className="text-xs text-slate-400 block mb-1">Total Registered Trainees</span>
-                  <h3 className="text-3xl font-bold text-white">{trainees.length}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+                  <span className="text-xs text-slate-400 block mb-1">Registered Users</span>
+                  <h3 className="text-3xl font-bold text-white">{adminStats?.totalUsers ?? '—'}</h3>
                 </div>
-                <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-                  <span className="text-xs text-slate-400 block mb-1">Active VR Simulations</span>
-                  <h3 className="text-3xl font-bold text-white">{simulations.length}</h3>
+                <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+                  <span className="text-xs text-slate-400 block mb-1">Trainees</span>
+                  <h3 className="text-3xl font-bold text-white">{adminStats?.totalTrainees ?? '—'}</h3>
                 </div>
-                <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-                  <span className="text-xs text-slate-400 block mb-1">Active Assignments</span>
-                  <h3 className="text-3xl font-bold text-white">{assignments.length}</h3>
+                <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+                  <span className="text-xs text-slate-400 block mb-1">Trainers</span>
+                  <h3 className="text-3xl font-bold text-white">{adminStats?.totalTrainers ?? '—'}</h3>
+                </div>
+                <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+                  <span className="text-xs text-slate-400 block mb-1">Scenarios</span>
+                  <h3 className="text-3xl font-bold text-white">{adminStats?.totalScenarios ?? '—'}</h3>
+                </div>
+                <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+                  <span className="text-xs text-slate-400 block mb-1">Training Sessions</span>
+                  <h3 className="text-3xl font-bold text-white">{adminStats?.totalSessions ?? '—'}</h3>
                 </div>
               </div>
 
-              <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
+              <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Trainee Performance Overview</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-[#27213b] text-slate-400">
+                      <tr className="border-b border-[#334155] text-slate-400">
                         <th className="pb-3 font-semibold">Name</th>
                         <th className="pb-3 font-semibold">Department</th>
                         <th className="pb-3 font-semibold">Completed Simulations</th>
                         <th className="pb-3 font-semibold">Avg Score</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#27213b]">
-                      {trainees.map((t) => (
-                        <tr key={t.id} className="hover:bg-[#0a0910]/50">
-                          <td className="py-4 font-medium text-white">{t.name}</td>
-                          <td className="py-4 text-slate-400">{t.dept}</td>
-                          <td className="py-4 text-slate-400">{t.completed} Modules</td>
-                          <td className="py-4 text-emerald-400 font-semibold">{t.avgScore}</td>
+                    <tbody className="divide-y divide-[#334155]">
+                      {trainees.filter(t => t.role === 'trainee').map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-800/50">
+                          <td className="py-4 font-medium text-white">{t.name || 'Name unavailable'}</td>
+                          <td className="py-4 text-slate-400">{t.dept || '—'}</td>
+                          <td className="py-4 text-slate-400">{t.completed ?? '—'}</td>
+                          <td className="py-4 text-emerald-400 font-semibold">{t.avgScore ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -251,7 +292,7 @@ export default function AdminDashboard({ user, onLogout }) {
           )}
 
           {activeTab === 'users' && (
-            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6 space-y-6">
+            <div className="bg-[#111827] border border-[#334155] rounded-lg p-6 space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Manage Users, Roles & Scenario Permissions</h2>
@@ -260,192 +301,201 @@ export default function AdminDashboard({ user, onLogout }) {
               </div>
 
               {/* Pending Trainer Access Requests Section */}
-              <div className="p-5 rounded-2xl bg-[#0a0910] border border-amber-500/30 space-y-3">
+              <div className="p-5 rounded-lg bg-[#0b1220] border border-amber-500/30 space-y-3">
                 <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
-                  <UserCheck className="w-4 h-4" /> Pending Trainer Access Requests
+                  <UserCheck className="w-4 h-4" /> Pending Trainer Access Requests <span className="text-slate-400">({pendingTrainerRequests.length})</span>
                 </h3>
-                <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b] flex items-center justify-between flex-wrap gap-3">
+                {pendingTrainerRequests.length === 0 && <p className="text-xs text-slate-400">There are no pending requests.</p>}
+                {pendingTrainerRequests.map(request => <div key={request.uid || request.id} className="p-3.5 rounded-lg bg-[#111827] border border-[#334155] flex items-center justify-between flex-wrap gap-3">
                   <div>
-                    <h4 className="font-bold text-white text-xs">Vikram Singh</h4>
-                    <p className="text-[11px] text-slate-400">vikram@ResQVerse.vr • Requested Trainer Access</p>
+                    <h4 className="font-bold text-white text-xs">{request.name}</h4>
+                    <p className="text-[11px] text-slate-400">{request.email} • Requested Trainer Access</p>
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => {
-                        setSuccessMsg('Trainer access approved for Vikram Singh!');
-                        setTimeout(() => setSuccessMsg(''), 3000);
-                      }}
+                      onClick={() => handleApproveTrainer(request.uid || request.id, true)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all"
                     >
                       Approve Trainer
                     </button>
                     <button
-                      onClick={() => {
-                        setSuccessMsg('Trainer access request declined.');
-                        setTimeout(() => setSuccessMsg(''), 3000);
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#27213b] hover:bg-red-500/20 text-slate-300 hover:text-red-300 transition-all"
+                      onClick={() => handleApproveTrainer(request.uid || request.id, false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-red-500/20 text-slate-200 hover:text-red-300 transition-colors"
                     >
                       Reject
                     </button>
                   </div>
-                </div>
+                </div>)}
               </div>
 
               <div className="space-y-4">
-                {trainees.map((t) => {
-                  const allowedScenarios = t.allowedScenarios || ['fire', 'flood', 'earthquake'];
+                <label className="relative block max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search users by name, email, role, or department" className="w-full bg-[#0b1220] border border-[#334155] rounded-lg py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400" />
+                </label>
+                {visibleUsers.map((t) => {
+                  const allowedScenarios = t.allowedScenarios ?? [];
                   return (
-                    <div key={t.id} className="p-5 rounded-2xl bg-[#0a0910] border border-[#27213b] space-y-4">
-                      <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#27213b] pb-3">
+                    <div key={t.id} className="p-5 rounded-lg bg-[#0b1220] border border-[#334155] space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#334155] pb-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-base text-white">{t.name}</h4>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-600/20 text-purple-300 border border-purple-500/30">
+                            <h4 className="font-bold text-base text-white">{t.name || 'Name unavailable'}</h4>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-300 border border-orange-500/30">
                               {t.role || 'trainee'}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-400">{t.email} • Dept: {t.dept}</p>
+                          <p className="text-xs text-slate-400">{t.email || 'Email unavailable'} • {t.dept || 'Department not set'}</p>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-400">Avg Performance: <strong className="text-emerald-400">{t.avgScore}</strong></span>
-                        </div>
+                        {t.avgScore !== undefined && <div className="flex items-center gap-3"><span className="text-xs text-slate-400">Avg Performance: <strong className="text-emerald-400">{t.avgScore}</strong></span></div>}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        {/* Trainer Assignment Control */}
-                        <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b]">
-                          <label className="block font-semibold text-slate-300 mb-1.5">Assigned Trainer</label>
-                          <select
-                            defaultValue={t.assignedTrainerId || 'trainer-official'}
-                            onChange={(e) => {
-                              setSuccessMsg(`Assigned ${t.name} to trainer.`);
-                              setTimeout(() => setSuccessMsg(''), 3000);
-                            }}
-                            className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-3 py-2 text-xs text-white"
-                          >
-                            <option value="none">Unassigned</option>
-                            <option value="trainer-official">Trainer Official (trainer@ResQVerse.vr)</option>
-                            <option value="trainer-senior">Senior Disaster Trainer (senior@ResQVerse.vr)</option>
-                          </select>
-                        </div>
+                      {t.role === 'trainee' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div className="p-3.5 rounded-lg bg-[#111827] border border-[#334155]">
+                            <label className="block font-semibold text-slate-300 mb-1.5">Assigned Trainer</label>
+                            <select
+                              value={t.assignedTrainerId || 'none'}
+                              onChange={(e) => handleAssignTrainer(t.uid || t.id, e.target.value === 'none' ? null : e.target.value)}
+                              className="w-full bg-[#0b1220] border border-[#334155] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-400"
+                            >
+                              <option value="none">Unassigned</option>
+                              {trainees.filter(candidate => candidate.role === 'trainer').map(trainer => (
+                                <option key={trainer.uid || trainer.id} value={trainer.uid || trainer.id}>{trainer.name || trainer.email}</option>
+                              ))}
+                            </select>
+                            {trainees.every(candidate => candidate.role !== 'trainer') && <p className="mt-2 text-slate-400">No trainer accounts are available.</p>}
+                          </div>
 
-                        {/* Scenario Permission Checkboxes */}
-                        <div className="p-3.5 rounded-xl bg-[#13111c] border border-[#27213b]">
-                          <label className="block font-semibold text-slate-300 mb-2">Scenario Permissions (Grant / Revoke)</label>
-                          <div className="flex items-center gap-4 flex-wrap">
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                              <input type="checkbox" defaultChecked={allowedScenarios.includes('fire')} className="rounded accent-purple-600" />
-                              <span>Fire</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                              <input type="checkbox" defaultChecked={allowedScenarios.includes('flood')} className="rounded accent-purple-600" />
-                              <span>Flood</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                              <input type="checkbox" defaultChecked={allowedScenarios.includes('earthquake')} className="rounded accent-purple-600" />
-                              <span>Earthquake</span>
-                            </label>
+                          <div className="p-3.5 rounded-lg bg-[#111827] border border-[#334155]">
+                            <label className="block font-semibold text-slate-300 mb-2">Scenario Permissions</label>
+                            <div className="flex items-center gap-4 flex-wrap">
+                              {['fire', 'flood', 'earthquake'].map(scenario => (
+                                <label key={scenario} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                                  <input type="checkbox" checked={allowedScenarios.includes(scenario)} disabled={pendingPermissionIds.has(t.uid || t.id)} onChange={e => handleUpdatePermissions(t.uid || t.id, scenario, e.target.checked)} className="rounded accent-[#f95738] disabled:cursor-wait disabled:opacity-50" />
+                                  <span className="capitalize">{scenario}</span>
+                                </label>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="rounded-lg border border-[#334155] bg-[#111827] px-4 py-3 text-xs text-slate-300">
+                          {t.role === 'trainer'
+                            ? `Trainer account • Access ${t.trainerAccessStatus || 'status unavailable'}`
+                            : 'Administrator account • Trainee assignment and scenario controls do not apply.'}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+                {visibleUsers.length === 0 && <p className="py-8 text-center text-sm text-slate-400">{trainees.length === 0 ? 'No users were returned by the API.' : 'No users match that search.'}</p>}
               </div>
             </div>
           )}
 
           {activeTab === 'trainings' && (
-            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
+            <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
               <h2 className="text-2xl font-bold text-white mb-6">Manage VR Simulations</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {simulations.map((s) => (
-                  <div key={s.id} className="p-5 rounded-2xl bg-[#0a0910] border border-[#27213b]">
-                    <span className="text-xs text-purple-400 font-semibold uppercase">{s.category}</span>
+                  <div key={s.id} className="p-5 rounded-lg bg-[#0b1220] border border-[#334155]">
+                    <span className="text-xs text-orange-300 font-semibold uppercase">{s.category}</span>
                     <h4 className="font-bold text-white text-base mt-1 mb-2">{s.title}</h4>
                     <p className="text-xs text-slate-400 mb-4">Difficulty: {s.difficulty}</p>
-                    <button className="w-full py-2 bg-[#27213b] hover:bg-purple-600/30 text-white rounded-xl text-xs font-semibold transition-colors">
-                      Configure Scenario
-                    </button>
+                    <p className="text-xs text-slate-500">Training assignment is not supported by the current API.</p>
                   </div>
                 ))}
+                {simulations.length === 0 && <p className="col-span-full py-8 text-center text-sm text-slate-400">No scenarios were returned by the API.</p>}
               </div>
             </div>
           )}
 
           {activeTab === 'assignments' && (
-            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">Manage Assignments</h2>
-              <div className="space-y-3">
-                {assignments.map((a) => (
-                  <div key={a.id} className="p-4 rounded-xl bg-[#0a0910] border border-[#27213b] flex items-center justify-between">
+            <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Assign Scenarios to Trainers</h2>
+              <p className="text-sm text-slate-400 mb-6">Scenarios below are discovered from Unity simulation results and grouped by their scenario type and location.</p>
+              {unityScenarioError && <p role="alert" className="mb-4 text-sm text-red-300">{unityScenarioError}</p>}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {unityScenarios.map(scenario => (
+                  <div key={scenario.scenarioId} className="p-5 rounded-lg bg-[#0b1220] border border-[#334155] space-y-4">
                     <div>
-                      <h4 className="font-bold text-white">{a.training}</h4>
-                      <p className="text-xs text-slate-400">Assigned to: <span className="text-white">{a.trainee}</span> • Due: {a.dueDate}</p>
+                      <p className="text-xs text-orange-300 font-semibold uppercase">{scenario.simulationType}</p>
+                      <h3 className="mt-1 text-lg font-bold text-white">{scenario.simulationType}</h3>
+                      {scenario.fireLocation && <p className="mt-1 text-sm text-slate-400">Location: {scenario.fireLocation}</p>}
                     </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                      {a.status}
-                    </span>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <select
+                        aria-label={`Trainer for ${scenario.simulationType}${scenario.fireLocation ? ` at ${scenario.fireLocation}` : ''}`}
+                        value={selectedTrainerId}
+                        onChange={event => setSelectedTrainerId(event.target.value)}
+                        className="flex-1 bg-[#111827] border border-[#334155] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-400"
+                      >
+                        <option value="">Select a trainer</option>
+                        {trainees.filter(candidate => candidate.role === 'trainer').map(trainer => (
+                          <option key={trainer.uid || trainer.id} value={trainer.uid || trainer.id}>{trainer.name || trainer.email}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleAssignScenario(scenario)}
+                        disabled={!selectedTrainerId || pendingAssignmentId === scenario.scenarioId}
+                        className="bg-orange-600 hover:bg-orange-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-semibold py-2 px-4 rounded-lg text-sm disabled:cursor-not-allowed"
+                      >
+                        {pendingAssignmentId === scenario.scenarioId ? 'Assigning...' : 'Assign'}
+                      </button>
+                    </div>
+                    {trainees.every(candidate => candidate.role !== 'trainer') && <p className="text-xs text-slate-400">No trainer accounts are available.</p>}
                   </div>
                 ))}
+                {!unityScenarioError && unityScenarios.length === 0 && <p className="col-span-full py-8 text-center text-sm text-slate-400">No Unity scenarios are available.</p>}
               </div>
             </div>
           )}
 
           {activeTab === 'reports' && (
-            <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">Generate / View Reports</h2>
-              <p className="text-sm text-slate-400 mb-6">Export comprehensive trainee AI evaluation logs for institutional compliance.</p>
-              <button className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 px-6 rounded-xl text-xs shadow-lg shadow-purple-600/30">
-                Export All Reports (CSV / PDF)
-              </button>
+            <div className="bg-[#111827] border border-[#334155] rounded-lg p-6">
+              <h2 className="text-2xl font-bold text-white mb-2">User Directory Report</h2>
+              <p className="text-sm text-slate-400 mb-5">View the users returned by the admin API or download the same report as CSV.</p>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={() => setShowReportPreview(value => !value)} aria-expanded={showReportPreview} className="rounded-lg border border-[#475569] px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700/50 transition-colors">
+                  {showReportPreview ? 'Hide report' : 'View report'}
+                </button>
+                <button type="button" onClick={handleExportUsers} className="bg-[#f95738] hover:bg-[#e04729] text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors">
+                  Download CSV
+                </button>
+              </div>
+              {showReportPreview && (
+                <div className="mt-5 overflow-x-auto rounded-lg border border-[#334155]" role="region" aria-label="User directory report preview">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-[#0b1220] text-slate-300">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Name</th>
+                        <th className="px-4 py-3 font-semibold">Email</th>
+                        <th className="px-4 py-3 font-semibold">Role</th>
+                        <th className="px-4 py-3 font-semibold">Department</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#334155]">
+                      {trainees.map(t => (
+                        <tr key={t.id} className="text-slate-200">
+                          <td className="px-4 py-3">{t.name || 'Name unavailable'}</td>
+                          <td className="px-4 py-3">{t.email || 'Email unavailable'}</td>
+                          <td className="px-4 py-3 capitalize">{t.role || 'Role unavailable'}</td>
+                          <td className="px-4 py-3">{t.dept || 'Not set'}</td>
+                        </tr>
+                      ))}
+                      {trainees.length === 0 && <tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400">No users were returned by the API.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
+          </>}
         </div>
 
-        {newAssignModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-            <div className="w-full max-w-md bg-[#13111c] border border-[#27213b] rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Assign VR Training</h3>
-              <form onSubmit={handleAssignTraining} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Select Trainee</label>
-                  <select className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 text-sm text-white">
-                    {trainees.map(t => <option key={t.id}>{t.name} ({t.dept})</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Select Simulation Module</label>
-                  <select className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 text-sm text-white">
-                    {simulations.map(s => <option key={s.id}>{s.title}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Due Date</label>
-                  <input type="date" defaultValue="2026-09-20" className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 text-sm text-white" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewAssignModal(false)}
-                    className="flex-1 bg-[#27213b] hover:bg-[#322b4d] text-white py-3 rounded-xl text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl text-xs font-semibold shadow-lg shadow-purple-600/30"
-                  >
-                    Confirm Assignment
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <footer className="px-8 py-4 border-t border-[#27213b] text-center text-xs text-slate-500">
+        <footer className="px-8 py-4 border-t border-[#334155] text-center text-xs text-slate-500">
           © 2026 ResQVerse Admin Control Panel. All rights reserved.
         </footer>
       </main>

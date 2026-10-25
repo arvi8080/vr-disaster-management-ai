@@ -3,6 +3,46 @@ const skillTwinService = require("../services/skillTwinService");
 const { sendSuccess } = require("../utils/response");
 const { ROLES, TRENDS } = require("../utils/constants");
 
+async function getTrainerAssignedTrainees(database, trainerUid) {
+    const [traineesSnapshot, trainerDoc] = await Promise.all([
+        database.collection("users")
+            .where("assignedTrainerId", "==", trainerUid)
+            .get(),
+        database.collection("users").doc(trainerUid).get()
+    ]);
+    const trainees = new Map();
+
+    traineesSnapshot.forEach(doc => {
+        if (doc.data().role !== ROLES.TRAINEE) {
+            return;
+        }
+        trainees.set(doc.id, { uid: doc.id, ...doc.data() });
+    });
+
+    const trainerData = trainerDoc.exists ? trainerDoc.data() : {};
+    const indexedTraineeIds = Array.isArray(trainerData.assignedTraineeIds)
+        ? trainerData.assignedTraineeIds
+        : [];
+    const missingTraineeIds = indexedTraineeIds.filter(uid => !trainees.has(uid));
+    const indexedTraineeDocs = await Promise.all(
+        missingTraineeIds.map(uid => database.collection("users").doc(uid).get())
+    );
+
+    for (const traineeDoc of indexedTraineeDocs) {
+        if (!traineeDoc.exists) {
+            continue;
+        }
+        const trainee = traineeDoc.data();
+        if (trainee.role !== ROLES.TRAINEE ||
+            (trainee.assignedTrainerId && trainee.assignedTrainerId !== trainerUid)) {
+            continue;
+        }
+        trainees.set(traineeDoc.id, { uid: traineeDoc.id, ...trainee });
+    }
+
+    return Array.from(trainees.values());
+}
+
 class DashboardController {
     async getTraineeDashboard(req, res, next) {
         try {
@@ -20,15 +60,14 @@ class DashboardController {
 
             const completedSessions = sessions.filter(s => s.status === "completed");
             const totalSessions = sessions.length;
-
-            let totalScore = 0;
-            completedSessions.forEach(s => {
-                totalScore += (s.score || 0);
-            });
-            const averageScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : 0;
+            const scoredSessions = completedSessions.filter(s => typeof s.score === "number" && Number.isFinite(s.score));
+            const totalScore = scoredSessions.reduce((total, session) => total + session.score, 0);
+            const averageScore = scoredSessions.length > 0 ? Math.round(totalScore / scoredSessions.length) : 0;
 
             completedSessions.sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
-            const latestScore = completedSessions.length > 0 ? completedSessions[0].score || 0 : 0;
+            const latestScore = completedSessions.length > 0 && typeof completedSessions[0].score === "number"
+                ? completedSessions[0].score
+                : 0;
 
             // Fetch Digital Skill Twin & Progress
             const skillTwin = await skillTwinService.getSkillTwin(traineeId);
@@ -57,7 +96,7 @@ class DashboardController {
                     latestScore
                 },
                 skills: skillTwin.skills || {},
-                overallScore: skillTwin.overallScore || 50,
+                overallScore: skillTwin.overallScore ?? 50,
                 trends: {
                     overall: progress.trend,
                     dimensionTrends: progress.dimensionTrends
@@ -81,20 +120,18 @@ class DashboardController {
             const isTrainer = req.user.role === ROLES.TRAINER;
             const trainerUid = isTrainer ? req.user.uid : (req.query.trainerId || null);
 
-            // Trainee query
-            let traineesQuery = db.collection("users").where("role", "==", ROLES.TRAINEE);
+            let assignedTrainees;
             if (trainerUid) {
-                traineesQuery = traineesQuery.where("assignedTrainerId", "==", trainerUid);
+                assignedTrainees = await getTrainerAssignedTrainees(db, trainerUid);
+            } else {
+                const traineesSnapshot = await db.collection("users")
+                    .where("role", "==", ROLES.TRAINEE)
+                    .get();
+                assignedTrainees = traineesSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
             }
-
-            const traineesSnapshot = await traineesQuery.get();
-            const assignedTrainees = [];
             const assignedTraineeIds = new Set();
 
-            traineesSnapshot.forEach(doc => {
-                assignedTrainees.push({ uid: doc.id, ...doc.data() });
-                assignedTraineeIds.add(doc.id);
-            });
+            assignedTrainees.forEach(trainee => assignedTraineeIds.add(trainee.uid));
 
             const totalTrainees = assignedTrainees.length;
 
@@ -200,4 +237,4 @@ class DashboardController {
 }
 
 module.exports = new DashboardController();
-
+module.exports.getTrainerAssignedTrainees = getTrainerAssignedTrainees;

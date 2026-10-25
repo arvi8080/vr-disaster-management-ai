@@ -1,33 +1,36 @@
 import { api } from "./api";
 
 export async function fetchMyFeedback() {
-  try {
-    const res = await api("/feedback/me");
-    return res.data;
-  } catch (err) {
-    console.warn("fetchMyFeedback API offline:", err);
-    return {
-      aiFeedback: "Excellent extinguisher technique. Remember to pull pin firmly and aim at the base of the fire.",
-      recommendations: ["Practice immediate drop under sturdy furniture during initial tremors."]
-    };
+  const res = await api("/feedback/me");
+  return res.data;
+}
+
+export async function fetchAllMyFeedback() {
+  const feedback = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const res = await api(`/feedback/me?page=${page}&limit=100`);
+    if (!Array.isArray(res.data)) {
+      throw new Error("Feedback history response was invalid.");
+    }
+    feedback.push(...res.data);
+    hasNextPage = Boolean(res.pagination?.hasNextPage);
+    page += 1;
   }
+
+  return feedback;
 }
 
 export async function fetchTraineeFeedback(traineeId) {
-  try {
-    const res = await api(`/feedback/${traineeId}`);
-    return res.data;
-  } catch (err) {
-    console.warn(`fetchTraineeFeedback ${traineeId} error:`, err);
-    return {
-      aiFeedback: "Good overall response. Slower evacuation speed in corridor zone.",
-      recommendations: ["Improve reaction time during initial alarm."]
-    };
-  }
+  const res = await api(`/feedback/${traineeId}`);
+  return res.data;
 }
 
 export const feedbackService = {
   fetchMyFeedback,
+  fetchAllMyFeedback,
   fetchTraineeFeedback,
   get: fetchMyFeedback
 };

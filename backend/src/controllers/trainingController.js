@@ -1,13 +1,29 @@
 const trainingService = require("../services/trainingService");
+const simulationResultsService = require("../services/simulationResultsService");
+const unityUserMappingService = require("../services/unityUserMappingService");
 const { sendSuccess, sendError } = require("../utils/response");
 const { ERROR_CODES, ROLES } = require("../utils/constants");
 
+
 class TrainingController {
+    constructor({
+        simulationResultsService: resultsService = simulationResultsService,
+        unityUserMappingService: userMappingService = unityUserMappingService
+    } = {}) {
+        this.simulationResultsService = resultsService;
+        this.unityUserMappingService = userMappingService;
+    }
+
     async createSession(req, res, next) {
         try {
             const { scenarioId } = req.body;
             const userAllowedScenarios = req.user.role === ROLES.ADMIN ? ["*"] : req.user.allowedScenarios;
-            const session = await trainingService.createSession(scenarioId, req.user.uid, userAllowedScenarios);
+            const session = await trainingService.createSession(
+                scenarioId,
+                req.user.uid,
+                userAllowedScenarios,
+                req.body.assignmentId
+            );
             return sendSuccess(res, session, "Training session created successfully", 201);
         } catch (error) {
             next(error);
@@ -37,6 +53,27 @@ class TrainingController {
         try {
             const result = await trainingService.getUserSessions(req.user.uid, req);
             return sendSuccess(res, result.data, "My training sessions fetched successfully", 200, result.pagination);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getSimulationById(req, res, next) {
+        try {
+            const { id } = req.params;
+            const simulation = await this.simulationResultsService.getSimulationById(id);
+
+            if (req.user.role === ROLES.TRAINEE) {
+                const unityUserId = await this.unityUserMappingService.getUnityUserId(req.user.uid) || req.user.uid;
+
+                if (unityUserId !== simulation.userId) {
+                    return sendError(res, "Access denied", ERROR_CODES.FORBIDDEN, 403);
+                }
+            } else if (![ROLES.TRAINER, ROLES.ADMIN].includes(req.user.role)) {
+                return sendError(res, "Access denied", ERROR_CODES.FORBIDDEN, 403);
+            }
+
+            return sendSuccess(res, simulation, "Simulation result fetched successfully");
         } catch (error) {
             next(error);
         }
@@ -73,5 +110,6 @@ class TrainingController {
     }
 }
 
-module.exports = new TrainingController();
-
+const trainingController = new TrainingController();
+module.exports = trainingController;
+module.exports.TrainingController = TrainingController;

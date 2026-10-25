@@ -15,6 +15,7 @@ const performanceRoutes = require("./routes/performanceRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const trainingAssignmentRoutes = require("./routes/trainingAssignmentRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const researchRoutes = require("./routes/researchRoutes");
 
@@ -77,6 +78,7 @@ app.use("/api/performance", performanceRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/training-assignments", trainingAssignmentRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/research", researchRoutes);
 

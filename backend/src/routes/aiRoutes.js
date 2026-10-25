@@ -3,6 +3,9 @@ const router = express.Router();
 const aiService = require("../services/aiService");
 const trainingService = require("../services/trainingService");
 const { sendSuccess, sendError } = require("../utils/response");
+const authMiddleware = require("../middleware/authMiddleware");
+const { isTraineeAssignedToTrainer } = require("../middleware/permissionMiddleware");
+const { ERROR_CODES, ROLES, SESSION_STATUS } = require("../utils/constants");
 
 // Public / AI Assistant Chat Guidance endpoint
 router.post("/guidance", async (req, res, next) => {
@@ -23,9 +26,26 @@ router.post("/guidance", async (req, res, next) => {
     }
 });
 
-router.post("/analyze/:sessionId", async (req, res, next) => {
+router.post("/analyze/:sessionId", authMiddleware, async (req, res, next) => {
     try {
         const { sessionId } = req.params;
+        const session = await trainingService.getSessionById(sessionId);
+        if (!session) {
+            return sendError(res, "Training session not found", ERROR_CODES.NOT_FOUND, 404);
+        }
+
+        const isOwner = session.traineeId === req.user.uid;
+        const isAssignedTrainer = req.user.role === ROLES.TRAINER && (
+            req.user.assignedTraineeIds.includes(session.traineeId) ||
+            await isTraineeAssignedToTrainer(req.user.uid, session.traineeId)
+        );
+        if (!isOwner && !isAssignedTrainer && req.user.role !== ROLES.ADMIN) {
+            return sendError(res, "Access denied", ERROR_CODES.FORBIDDEN, 403);
+        }
+        if (session.status !== SESSION_STATUS.COMPLETED) {
+            return sendError(res, "AI feedback is available after a training session is completed", ERROR_CODES.BAD_REQUEST, 400);
+        }
+
         const analysis = await aiService.analyzeSession(sessionId);
         return sendSuccess(res, analysis, "AI session analysis completed successfully");
     } catch (error) {

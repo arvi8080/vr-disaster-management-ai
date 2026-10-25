@@ -9,6 +9,7 @@ router.use(authMiddleware);
 
 router.post("/sessions", validate(validateCreateSession), trainingController.createSession.bind(trainingController));
 router.get("/my-sessions", trainingController.getMySessions.bind(trainingController));
+router.get("/simulations/:id", trainingController.getSimulationById.bind(trainingController));
 router.get("/sessions/:id", trainingController.getSessionById.bind(trainingController));
 router.post("/sessions/:id/start", trainingController.startSession.bind(trainingController));
 router.post("/sessions/:id/complete", trainingController.completeSession.bind(trainingController));

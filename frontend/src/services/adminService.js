@@ -1,62 +1,47 @@
 import { api } from "./api";
 
 export async function fetchUsers(params = {}) {
-  try {
-    const queryString = new URLSearchParams(params).toString();
-    const res = await api(`/admin/users${queryString ? `?${queryString}` : ""}`);
-    return res.data;
-  } catch (err) {
-    console.warn("Admin fetchUsers API offline:", err);
-    return [
-      { uid: "usr-01", name: "Manav Vartak", email: "manav@ResQVerse.vr", role: "trainee", dept: "CS Lab", allowedScenarios: ["fire", "flood", "earthquake"], assignedTrainerId: "trainer-official" },
-      { uid: "usr-02", name: "Priya Sharma", email: "priya@ResQVerse.vr", role: "trainee", dept: "Electronics", allowedScenarios: ["fire", "earthquake"], assignedTrainerId: "trainer-official" },
-      { uid: "usr-03", name: "Trainer Official", email: "trainer@ResQVerse.vr", role: "trainer", allowedScenarios: ["fire", "flood", "earthquake"] }
-    ];
-  }
+  const queryString = new URLSearchParams(params).toString();
+  const res = await api(`/admin/users${queryString ? `?${queryString}` : ""}`);
+  return res.data;
 }
 
 export async function assignTrainer(traineeId, trainerId) {
-  try {
-    const res = await api("/admin/assign-trainer", {
-      method: "POST",
-      body: JSON.stringify({ traineeId, trainerId })
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("assignTrainer API error:", err);
-    return { traineeId, trainerId };
-  }
+  const res = await api("/admin/assign-trainer", {
+    method: "POST",
+    body: JSON.stringify({ traineeId, trainerId })
+  });
+  return res.data;
 }
 
 export async function updatePermissions(uid, allowedScenarios) {
-  try {
-    const res = await api("/admin/permissions", {
-      method: "POST",
-      body: JSON.stringify({ uid, allowedScenarios })
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("updatePermissions API error:", err);
-    return { uid, allowedScenarios };
-  }
+  const res = await api("/admin/permissions", {
+    method: "POST",
+    body: JSON.stringify({ uid, allowedScenarios })
+  });
+  return res.data;
 }
 
 export async function approveTrainer(uid, approve = true) {
-  try {
-    const res = await api("/admin/approve-trainer", {
-      method: "POST",
-      body: JSON.stringify({ uid, approve })
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("approveTrainer API error:", err);
-    return { uid, approve };
-  }
+  const res = await api("/admin/approve-trainer", {
+    method: "POST",
+    body: JSON.stringify({ uid, approve })
+  });
+  return res.data;
+}
+
+export async function assignScenarioToTrainer(scenarioId, trainerId) {
+  const res = await api("/training-assignments", {
+    method: "POST",
+    body: JSON.stringify({ scenarioId, trainerId })
+  });
+  return res;
 }
 
 export const adminService = {
   fetchUsers,
   assignTrainer,
   updatePermissions,
-  approveTrainer
+  approveTrainer,
+  assignScenarioToTrainer
 };

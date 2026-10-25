@@ -45,11 +45,7 @@ export const authService = {
   },
 
   logout: async () => {
+    await signOut(auth);
     localStorage.removeItem('firebaseIdToken');
-    try {
-      await signOut(auth);
-    } catch (e) {
-      // Ignored if offline
-    }
   }
 };

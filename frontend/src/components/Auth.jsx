@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Sparkles, Lock, Mail, User, ArrowRight, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Sparkles, Lock, Mail, User, ArrowRight, AlertCircle, CheckCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../services/authService';
+import ThemeToggle from './ThemeToggle';
 
-export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
+export default function Auth({ onLogin, initialMode = 'login', onBackToHome, theme, onToggleTheme }) {
   const [isRegister, setIsRegister] = useState(initialMode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState('');
   const [requestTrainer, setRequestTrainer] = useState(false);
 
@@ -66,7 +69,8 @@ export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-cyan-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
         {/* Back to Home Button */}
-        {onBackToHome && (
+        <div className="mb-4 flex items-center justify-between">
+          {onBackToHome ? (
           <button
             type="button"
             onClick={onBackToHome}
@@ -75,12 +79,18 @@ export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Home</span>
           </button>
-        )}
+          ) : <span />}
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
 
         {/* Branding Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 text-white shadow-lg shadow-purple-500/30 mb-4">
-            <Shield className="w-8 h-8" />
+        <div
+          onClick={onBackToHome}
+          className="text-center mb-8 cursor-pointer group select-none"
+          title="Return to ResQVerse Home"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-purple-500/30 mb-4 group-hover:scale-105 transition-transform">
+            <img src="/images/VRlogo.jpeg" alt="ResQVerse logo" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white flex items-center justify-center gap-2">
             ResQVerse <Sparkles className="w-4 h-4 text-purple-400" />
@@ -144,13 +154,22 @@ export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
             <div className="relative">
               <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 pl-10 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition-colors"
+                className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 pl-10 pr-12 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition-colors"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(visible => !visible)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
@@ -161,13 +180,22 @@ export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
                   <input
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 pl-10 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition-colors"
+                    className="w-full bg-[#0a0910] border border-[#27213b] rounded-xl px-4 py-3 pl-10 pr-12 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition-colors"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(visible => !visible)}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    aria-pressed={showConfirmPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -212,4 +240,3 @@ export default function Auth({ onLogin, initialMode = 'login', onBackToHome }) {
     </div>
   );
 }
-

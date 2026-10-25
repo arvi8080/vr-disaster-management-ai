@@ -1,81 +1,114 @@
 import { api } from "./api";
 
 export async function fetchMySessions() {
-  try {
-    const res = await api("/training/my-sessions");
-    return res.data;
-  } catch (err) {
-    console.warn("Training sessions API offline:", err);
-    return [
-      { id: "SIM-2026-0814-A", scenarioId: "sc-earthquake-01", scenario: "Earthquake Structural Collapse", score: 96, date: "Aug 14, 2026", status: "completed" },
-      { id: "SIM-2026-0810-B", scenarioId: "sc-fire-01", scenario: "Industrial Chemical Spill & Fire", score: 88, date: "Aug 10, 2026", status: "completed" }
-    ];
-  }
+  const res = await api("/training/my-sessions");
+  return res.data;
 }
 
-export async function createSession(scenarioId) {
-  try {
-    const res = await api("/training/sessions", {
-      method: "POST",
-      body: JSON.stringify({ scenarioId })
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("Create session API error:", err);
-    return { id: `SESS-${Date.now()}`, scenarioId, status: "created" };
+export async function fetchAllMySessions() {
+  const sessions = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const res = await api(`/training/my-sessions?page=${page}&limit=100`);
+    if (!Array.isArray(res.data)) {
+      throw new Error("Training history response was invalid.");
+    }
+    sessions.push(...res.data);
+    hasNextPage = Boolean(res.pagination?.hasNextPage);
+    page += 1;
   }
+
+  return sessions;
+}
+
+export async function fetchSimulationById(simulationId) {
+  const res = await api(`/training/simulations/${encodeURIComponent(simulationId)}`);
+  return res.data;
+}
+
+export async function fetchMyAssignments() {
+  const res = await api("/training-assignments/mine");
+  return res.data;
+}
+
+export async function fetchAssignmentsForMe() {
+  const res = await api("/training-assignments/for-me");
+  return res.data;
+}
+
+export async function assignScenarioToTrainee({ scenarioId, traineeId, dueAt }) {
+  const res = await api("/training-assignments/to-trainee", {
+    method: "POST",
+    body: JSON.stringify({ scenarioId, traineeId, dueAt })
+  });
+  return res;
+}
+
+export async function updateTraineeAssignmentDeadline(assignmentId, dueAt) {
+  const res = await api(`/training-assignments/${encodeURIComponent(assignmentId)}/deadline`, {
+    method: "PATCH",
+    body: JSON.stringify({ dueAt })
+  });
+  return res.data;
+}
+
+export async function createSession(scenarioId, assignmentId = null) {
+  const res = await api("/training/sessions", {
+    method: "POST",
+    body: JSON.stringify({ scenarioId, ...(assignmentId ? { assignmentId } : {}) })
+  });
+  return res.data;
 }
 
 export async function startSession(sessionId) {
-  try {
-    const res = await api(`/training/sessions/${sessionId}/start`, {
-      method: "POST"
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("Start session API error:", err);
-    return { id: sessionId, status: "in_progress" };
-  }
+  const res = await api(`/training/sessions/${sessionId}/start`, {
+    method: "POST"
+  });
+  return res.data;
+}
+
+export async function cancelSession(sessionId) {
+  const res = await api(`/training/sessions/${sessionId}/cancel`, {
+    method: "POST"
+  });
+  return res.data;
 }
 
 export async function postSessionEvents(sessionId, events) {
-  try {
-    const res = await api(`/training/sessions/${sessionId}/events`, {
+  return Promise.all(events.map(async event => {
+    const res = await api("/training/events", {
       method: "POST",
-      body: JSON.stringify({ events })
+      body: JSON.stringify({
+        sessionId,
+        eventType: event.eventType,
+        timestamp: event.timestamp,
+        metadata: event.details || {}
+      })
     });
     return res.data;
-  } catch (err) {
-    console.warn("Post session events API error:", err);
-    return { success: true };
-  }
+  }));
 }
 
 export async function completeSession(sessionId, completionBody = {}) {
-  try {
-    const res = await api(`/training/sessions/${sessionId}/complete`, {
-      method: "POST",
-      body: JSON.stringify(completionBody)
-    });
-    return res.data;
-  } catch (err) {
-    console.warn("Complete session API error:", err);
-    return {
-      id: sessionId,
-      status: "completed",
-      score: 88,
-      feedback: {
-        summary: "Excellent emergency response and protocol execution.",
-        recommendations: ["Maintain current evacuation speed in future drills."]
-      }
-    };
-  }
+  const res = await api(`/training/sessions/${sessionId}/complete`, {
+    method: "POST",
+    body: JSON.stringify(completionBody)
+  });
+  return res.data;
 }
 
 export const trainingService = {
   fetchMySessions,
+  fetchAllMySessions,
+  fetchSimulationById,
+  fetchMyAssignments,
+  fetchAssignmentsForMe,
+  assignScenarioToTrainee,
   createSession,
   startSession,
+  cancelSession,
   postSessionEvents,
   completeSession
 };

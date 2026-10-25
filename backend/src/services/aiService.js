@@ -8,6 +8,28 @@ const skillTwinService = require("./skillTwinService");
 const feedbackService = require("./feedbackService");
 const logger = require("../utils/logger");
 
+const NUMERIC_FEATURE_KEYS = [
+    "evacuationTime", "averageReactionTime", "wrongDecisions", "correctDecisions",
+    "safetyViolations", "hazardsDetected", "hazardsIgnored", "victimsRescued",
+    "objectivesCompleted"
+];
+const INTEGER_FEATURE_KEYS = new Set([
+    "wrongDecisions", "correctDecisions", "safetyViolations",
+    "hazardsDetected", "hazardsIgnored", "victimsRescued", "objectivesCompleted"
+]);
+
+function buildValidatedPerformanceFeatures(features) {
+    return Object.fromEntries(
+        NUMERIC_FEATURE_KEYS
+            .filter(key =>
+                typeof features[key] === "number" &&
+                Number.isFinite(features[key]) &&
+                (!INTEGER_FEATURE_KEYS.has(key) || Number.isInteger(features[key]))
+            )
+            .map(key => [key, features[key]])
+    );
+}
+
 class AIService {
     async analyzeSession(sessionId) {
         // 1. Fetch session
@@ -23,8 +45,9 @@ class AIService {
         const events = await eventService.getAllEventsForSession(sessionId);
 
         // 3. Extract performance features
-        const performanceFeatures = performanceFeatureService.extractFeatures(session, events);
-
+        const performanceFeatures = session.sourceSystem === "unity" && session.performanceFeatures
+            ? session.performanceFeatures
+            : performanceFeatureService.extractFeatures(session, events);
         // 4. Fetch current Digital Skill Twin profile
         const skillTwin = await skillTwinService.getSkillTwin(session.traineeId);
 
@@ -33,16 +56,16 @@ class AIService {
             traineeId: session.traineeId,
             sessionId,
             currentSkills: skillTwin.skills || {},
+            observedSkillDimensions: skillTwin.observedSkillDimensions || null,
             performanceFeatures: {
-                evacuationTime: performanceFeatures.evacuationTime,
-                averageReactionTime: performanceFeatures.averageReactionTime,
-                wrongDecisions: performanceFeatures.wrongDecisions,
-                correctDecisions: performanceFeatures.correctDecisions,
-                safetyViolations: performanceFeatures.safetyViolations,
-                hazardsDetected: performanceFeatures.hazardsDetected,
-                hazardsIgnored: performanceFeatures.hazardsIgnored,
-                victimsRescued: performanceFeatures.victimsRescued,
-                objectivesCompleted: performanceFeatures.objectivesCompleted
+                ...buildValidatedPerformanceFeatures(performanceFeatures),
+                ...(session.sourceSystem === "unity" ? {
+                    simulationType: session.simulationType,
+                    completionStatus: session.completionStatus,
+                    scoreComponents: performanceFeatures.scoreComponents,
+                    observedMetrics: performanceFeatures.observedMetrics,
+                    unityMetrics: session.unityMetrics
+                } : {})
             }
         };
 
@@ -111,4 +134,4 @@ class AIService {
 }
 
 module.exports = new AIService();
-
+module.exports.buildValidatedPerformanceFeatures = buildValidatedPerformanceFeatures;

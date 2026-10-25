@@ -1,6 +1,3 @@
-export default function useAuth() {
-  return {
-    user: { name: "Gaurav Thakur", role: "admin" },
-    isAuthenticated: true,
-  };
-}
+import { useAuth } from '../context/AuthContext';
+
+export default useAuth;

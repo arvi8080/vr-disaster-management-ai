@@ -2,9 +2,34 @@ const { db } = require("../config/firebase");
 const { FieldValue } = require("firebase-admin/firestore");
 const { SKILL_UPDATE_WEIGHTS, TRENDS } = require("../utils/constants");
 const logger = require("../utils/logger");
+const { createHash } = require("node:crypto");
+const SKILL_KEYS = [
+    "decisionMaking", "situationalAwareness", "safetyAwareness",
+    "evacuationSkill", "emergencyResponse", "communication", "teamwork"
+];
 
 class SkillTwinService {
+    constructor(database = db) {
+        this.db = database;
+    }
+
     calculateSessionSkillScores(features) {
+        if (features.skillScores && typeof features.skillScores === "object") {
+            const skills = Object.fromEntries(
+                Object.entries(features.skillScores)
+                    .filter(([name, score]) => SKILL_KEYS.includes(name) && typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 100)
+                    .map(([name, score]) => [name, Math.round(score)])
+            );
+            const values = Object.values(skills);
+            return {
+                skills,
+                observedSkillDimensions: Object.keys(skills),
+                overallScore: values.length > 0
+                    ? Math.round(values.reduce((total, score) => total + score, 0) / values.length)
+                    : null
+            };
+        }
+
         // 1. Decision Making (0-100)
         let decisionMaking = features.decisionAccuracy || 70;
         if (features.wrongDecisions > 2) {
@@ -59,11 +84,15 @@ class SkillTwinService {
         const values = Object.values(skills);
         const overallScore = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 
-        return { skills, overallScore };
+        return {
+            skills,
+            observedSkillDimensions: Object.keys(skills),
+            overallScore
+        };
     }
 
     async getSkillTwin(traineeId) {
-        const doc = await db.collection("skillProfiles").doc(traineeId).get();
+        const doc = await this.db.collection("skillProfiles").doc(traineeId).get();
         if (!doc.exists) {
             const defaultSkills = {
                 decisionMaking: 50,
@@ -102,67 +131,109 @@ class SkillTwinService {
     }
 
     async updateSkillTwin(traineeId, sessionId, performanceFeatures) {
-        const currentProfile = await this.getSkillTwin(traineeId);
         const sessionSkillData = this.calculateSessionSkillScores(performanceFeatures);
+        if (!sessionSkillData.observedSkillDimensions.length) {
+            return this.getSkillTwin(traineeId);
+        }
 
-        const trainingCount = (currentProfile.trainingCount || 0) + 1;
-        const prevSkills = currentProfile.skills || {};
-
-        const updatedSkills = {};
-        const skillKeys = [
-            "decisionMaking", "situationalAwareness", "safetyAwareness",
-            "evacuationSkill", "emergencyResponse", "communication", "teamwork"
-        ];
-
-        // Weighted Exponential Moving Average update rule
+        const skillKeys = SKILL_KEYS;
         const wHist = SKILL_UPDATE_WEIGHTS.HISTORICAL;
         const wCurr = SKILL_UPDATE_WEIGHTS.CURRENT;
+        const historyId = `session_${createHash("sha256").update(sessionId).digest("hex")}`;
+        const historyRef = this.db.collection("skillHistory").doc(historyId);
+        const profileRef = this.db.collection("skillProfiles").doc(traineeId);
+        let updatedProfile;
 
-        skillKeys.forEach(key => {
-            const prev = prevSkills[key] !== undefined ? prevSkills[key] : 50;
-            const curr = sessionSkillData.skills[key];
-            if (trainingCount === 1) {
-                updatedSkills[key] = curr;
-            } else {
-                updatedSkills[key] = Math.round((prev * wHist) + (curr * wCurr));
+        await this.db.runTransaction(async transaction => {
+            const [historyDoc, profileDoc] = await Promise.all([
+                transaction.get(historyRef),
+                transaction.get(profileRef)
+            ]);
+
+            if (historyDoc.exists) {
+                updatedProfile = profileDoc.exists
+                    ? { traineeId, ...profileDoc.data() }
+                    : { traineeId, ...historyDoc.data().profile };
+                return;
             }
+
+            const current = profileDoc.exists ? profileDoc.data() : {};
+            const currentSkills = current.skills || {};
+            const observedDimensions = new Set(
+                Array.isArray(current.observedSkillDimensions)
+                    ? current.observedSkillDimensions.filter(key =>
+                        skillKeys.includes(key) &&
+                        typeof currentSkills[key] === "number" &&
+                        Number.isFinite(currentSkills[key])
+                    )
+                    : profileDoc.exists
+                        ? skillKeys.filter(key => typeof currentSkills[key] === "number")
+                        : []
+            );
+            const updatedSkills = {
+                decisionMaking: 50,
+                situationalAwareness: 50,
+                safetyAwareness: 50,
+                evacuationSkill: 50,
+                emergencyResponse: 50,
+                communication: 50,
+                teamwork: 50,
+                ...currentSkills
+            };
+
+            for (const key of sessionSkillData.observedSkillDimensions) {
+                if (!skillKeys.includes(key)) continue;
+                const currentScore = sessionSkillData.skills[key];
+                updatedSkills[key] = observedDimensions.has(key)
+                    ? Math.round((currentSkills[key] * wHist) + (currentScore * wCurr))
+                    : currentScore;
+                observedDimensions.add(key);
+            }
+
+            const observedScores = [...observedDimensions]
+                .map(key => updatedSkills[key])
+                .filter(score => typeof score === "number" && Number.isFinite(score));
+            const overallScore = observedScores.length > 0
+                ? Math.round(observedScores.reduce((total, score) => total + score, 0) / observedScores.length)
+                : null;
+            const trainingCount = (current.trainingCount || 0) + 1;
+            const profile = {
+                traineeId,
+                skills: updatedSkills,
+                observedSkillDimensions: [...observedDimensions],
+                overallScore,
+                trainingCount,
+                trend: current.trend || TRENDS.STABLE,
+                lastSessionScore: sessionSkillData.overallScore,
+                lastUpdated: FieldValue.serverTimestamp()
+            };
+
+            transaction.create(historyRef, {
+                traineeId,
+                sessionId,
+                skills: updatedSkills,
+                observedSkillDimensions: sessionSkillData.observedSkillDimensions,
+                overallScore: sessionSkillData.overallScore,
+                createdAt: FieldValue.serverTimestamp()
+            });
+            transaction.set(profileRef, profile, { merge: true });
+            updatedProfile = profile;
         });
-
-        const skillValues = Object.values(updatedSkills);
-        const overallScore = Math.round(skillValues.reduce((a, b) => a + b, 0) / skillValues.length);
-
-        // Record historical snapshot in skillHistory collection
-        const historyRecord = {
-            traineeId,
-            sessionId,
-            skills: updatedSkills,
-            overallScore: sessionSkillData.overallScore,
-            createdAt: FieldValue.serverTimestamp()
-        };
-        await db.collection("skillHistory").add(historyRecord);
 
         // Fetch recent snapshots to calculate overall trend
         const snapshots = await this.getSkillHistory(traineeId);
         const trend = this.calculateSkillTrend(snapshots);
+        if (updatedProfile.trend !== trend) {
+            await profileRef.update({ trend });
+            updatedProfile.trend = trend;
+        }
 
-        const updatedProfile = {
-            traineeId,
-            skills: updatedSkills,
-            overallScore,
-            trainingCount,
-            trend,
-            lastSessionScore: sessionSkillData.overallScore,
-            lastUpdated: FieldValue.serverTimestamp()
-        };
-
-        await db.collection("skillProfiles").doc(traineeId).set(updatedProfile, { merge: true });
         logger.info(`Updated Digital Skill Twin profile for trainee ${traineeId}`);
-
         return updatedProfile;
     }
 
     async getSkillHistory(traineeId) {
-        const snapshot = await db.collection("skillHistory")
+        const snapshot = await this.db.collection("skillHistory")
             .where("traineeId", "==", traineeId)
             .get();
 
@@ -180,11 +251,11 @@ class SkillTwinService {
         const history = await this.getSkillHistory(traineeId);
 
         let previousScore = 50;
-        let currentScore = currentProfile.overallScore || 50;
+        let currentScore = currentProfile.overallScore ?? 50;
 
         if (history.length >= 2) {
-            previousScore = history[history.length - 2].overallScore || 50;
-            currentScore = history[history.length - 1].overallScore || currentScore;
+            previousScore = history[history.length - 2].overallScore ?? 50;
+            currentScore = history[history.length - 1].overallScore ?? currentScore;
         } else if (history.length === 1) {
             previousScore = 50;
             currentScore = history[0].overallScore || currentScore;
@@ -202,18 +273,19 @@ class SkillTwinService {
             "evacuationSkill", "emergencyResponse", "communication", "teamwork"
         ];
 
+        const observedDimensions = currentProfile.observedSkillDimensions || skillKeys;
         if (history.length >= 2) {
             const prevSkills = history[history.length - 2].skills || {};
             const currSkills = history[history.length - 1].skills || {};
 
-            skillKeys.forEach(k => {
-                const diff = (currSkills[k] || 50) - (prevSkills[k] || 50);
+            observedDimensions.forEach(k => {
+                const diff = (currSkills[k] ?? 50) - (prevSkills[k] ?? 50);
                 if (diff > 3) dimensionTrends[k] = TRENDS.IMPROVING;
                 else if (diff < -3) dimensionTrends[k] = TRENDS.DECLINING;
                 else dimensionTrends[k] = TRENDS.STABLE;
             });
         } else {
-            skillKeys.forEach(k => dimensionTrends[k] = TRENDS.STABLE);
+            observedDimensions.forEach(k => dimensionTrends[k] = TRENDS.STABLE);
         }
 
         return {
@@ -232,8 +304,8 @@ class SkillTwinService {
         }
 
         const recent = historySnapshots.slice(-3);
-        const first = recent[0].overallScore || 50;
-        const last = recent[recent.length - 1].overallScore || 50;
+        const first = recent[0].overallScore ?? 50;
+        const last = recent[recent.length - 1].overallScore ?? 50;
         const diff = last - first;
 
         if (diff > 3) return TRENDS.IMPROVING;
@@ -243,7 +315,7 @@ class SkillTwinService {
 
     async recalculateSkillProfile(traineeId) {
         // Fetch all completed training sessions for trainee
-        const sessionsSnapshot = await db.collection("trainingSessions")
+        const sessionsSnapshot = await this.db.collection("trainingSessions")
             .where("traineeId", "==", traineeId)
             .where("status", "==", "completed")
             .get();
@@ -285,5 +357,6 @@ class SkillTwinService {
     }
 }
 
-module.exports = new SkillTwinService();
-
+const skillTwinService = new SkillTwinService();
+module.exports = skillTwinService;
+module.exports.SkillTwinService = SkillTwinService;

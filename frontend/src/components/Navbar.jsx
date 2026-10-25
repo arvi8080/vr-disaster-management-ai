@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Shield, Menu, X, ArrowRight, UserCheck } from 'lucide-react';
+import { Menu, X, ArrowRight, UserCheck } from 'lucide-react';
+import ThemeToggle from './ThemeToggle';
 
-export default function Navbar({ onNavigate, currentPath, user, onLogout }) {
+export default function Navbar({ onNavigate, currentPath, user, onLogout, theme, onToggleTheme }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
 
@@ -11,7 +12,7 @@ export default function Navbar({ onNavigate, currentPath, user, onLogout }) {
     { id: 'features', label: 'Features', href: '#features' },
     { id: 'training', label: 'Training', href: '#training' },
     { id: 'ai', label: 'AI & Analytics', href: '#ai-pipeline' },
-    { id: 'contact', label: 'Contact', href: '#footer' }
+    { id: 'contact', label: 'Contact', href: '#contact' }
   ];
 
   const handleNavClick = (id, href) => {
@@ -29,17 +30,25 @@ export default function Navbar({ onNavigate, currentPath, user, onLogout }) {
     }
   };
 
+  const handleLogoClick = () => {
+    setActiveTab('home');
+    setMobileMenuOpen(false);
+    onNavigate('/');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         
         {/* Left: Brand Logo & Tagline */}
         <div 
-          onClick={() => handleNavClick('home', '#top')}
+          onClick={handleLogoClick}
           className="flex items-center gap-3 cursor-pointer group select-none"
+          title="Go to ResQVerse Home"
         >
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-slate-900 via-indigo-950 to-orange-600 flex items-center justify-center text-white shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform">
-            <Shield className="w-6 h-6 text-orange-400" />
+          <div className="w-11 h-11 shrink-0 overflow-hidden rounded-xl shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform">
+            <img src="/images/VRlogo.jpeg" alt="ResQVerse logo" className="h-full w-full object-cover" />
           </div>
           <div>
             <span className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-1">
@@ -74,6 +83,7 @@ export default function Navbar({ onNavigate, currentPath, user, onLogout }) {
 
         {/* Right: Auth Buttons */}
         <div className="hidden md:flex items-center gap-3">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           {user ? (
             <div className="flex items-center gap-3">
               <button
@@ -117,6 +127,7 @@ export default function Navbar({ onNavigate, currentPath, user, onLogout }) {
 
         {/* Mobile Hamburger Toggle */}
         <div className="md:hidden flex items-center gap-2">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle Navigation Menu"

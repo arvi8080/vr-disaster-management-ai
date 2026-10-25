@@ -7,4 +7,3 @@ module.exports = {
     AI_SERVICE_URL: process.env.AI_SERVICE_URL || "http://localhost:8000",
     CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173"
 };
-
