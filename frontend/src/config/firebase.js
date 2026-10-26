@@ -7,13 +7,17 @@ import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "[REDACTED]",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "vr-disaster-training-platform.firebaseapp.com",
   projectId: "vr-disaster-training-platform",
   storageBucket: "vr-disaster-training-platform.firebasestorage.app",
   messagingSenderId: "886547134036",
   appId: "1:886547134036:web:4db6ee264cc4bbd8985fc1"
 };
+
+if (!firebaseConfig.apiKey) {
+  throw new Error("VITE_FIREBASE_API_KEY must be set to initialize Firebase.");
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

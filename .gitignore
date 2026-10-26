@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ==========================================
 # Environment & Secret Files
 # ==========================================
@@ -139,10 +138,9 @@ backend/firebase-service-account.json
 # Environment secrets
 .env
 .env.*
+frontend/.env.local
 !.env.example
 
 # Node dependencies
 node_modules/
-=======
 node_modules
->>>>>>> 885e571 (Add frontend application)

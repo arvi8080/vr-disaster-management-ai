@@ -11,10 +11,11 @@ namespace ResQVerse.Unity
     public sealed class FirebaseRestClient : MonoBehaviour
     {
         private const string ProjectId = "vr-disaster-training-platform";
-        private const string WebApiKey = "[REDACTED]";
         private const string AuthBaseUrl = "https://identitytoolkit.googleapis.com/v1";
         private const string SecureTokenUrl = "https://securetoken.googleapis.com/v1";
         private const string FirestoreBaseUrl = "https://firestore.googleapis.com/v1";
+
+        [SerializeField] private string webApiKey;
 
         private string _idToken;
         private string _refreshToken;
@@ -36,6 +37,11 @@ namespace ResQVerse.Unity
                 onError?.Invoke("Enter the email and password used by your ResQVerse account.");
                 yield break;
             }
+            if (string.IsNullOrWhiteSpace(webApiKey))
+            {
+                onError?.Invoke("Configure the Firebase Web API key on the Firebase REST client.");
+                yield break;
+            }
 
             var body = JsonUtility.ToJson(new SignInRequest
             {
@@ -44,7 +50,7 @@ namespace ResQVerse.Unity
                 returnSecureToken = true
             });
             using (var request = CreateJsonRequest(
-                $"{AuthBaseUrl}/accounts:signInWithPassword?key={WebApiKey}",
+                $"{AuthBaseUrl}/accounts:signInWithPassword?key={webApiKey}",
                 UnityWebRequest.kHttpVerbPOST,
                 body))
             {
@@ -121,7 +127,7 @@ namespace ResQVerse.Unity
         private IEnumerator RefreshIdToken(Action<string> onError)
         {
             using (var request = CreateJsonRequest(
-                $"{SecureTokenUrl}/token?key={WebApiKey}",
+                $"{SecureTokenUrl}/token?key={webApiKey}",
                 UnityWebRequest.kHttpVerbPOST,
                 JsonUtility.ToJson(new RefreshTokenRequest { grant_type = "refresh_token", refresh_token = _refreshToken })))
             {
