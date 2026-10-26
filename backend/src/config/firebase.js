@@ -3,11 +3,21 @@ const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { getAuth } = require("firebase-admin/auth");
 
-const serviceAccount = require("../../firebase-service-account.json");
+require("dotenv").config();
 
-const app = getApps().length === 0 ? initializeApp({
-    credential: cert(serviceAccount)
-}) : getApp();
+let serviceAccount;
+
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+    serviceAccount = require("../../firebase-service-account.json");
+}
+
+const app = getApps().length === 0
+    ? initializeApp({
+        credential: cert(serviceAccount)
+    })
+    : getApp();
 
 const db = getFirestore(app);
 const auth = getAuth(app);
