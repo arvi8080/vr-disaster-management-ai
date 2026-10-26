@@ -40,6 +40,20 @@ function formatSeconds(value) {
     : 'N/A';
 }
 
+function MetaQuestInstallLink() {
+  return (
+    <a
+      href="https://www.meta.com/s/bN5WqMkD4"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 rounded-lg border border-purple-500/40 px-3 py-2 text-xs font-semibold text-purple-200 hover:bg-purple-500/10"
+    >
+      <Download className="h-4 w-4" />
+      Install on Meta Quest
+    </a>
+  );
+}
+
 function formatActionDuration(value, actionResult) {
   if (actionResult === 'Not completed') return 'Not completed';
   return formatSeconds(value);
@@ -584,9 +598,12 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-white">My Trainings</h3>
-                  <button onClick={() => setActiveTab('trainings')} className="text-xs font-semibold text-purple-400 hover:text-purple-300 flex items-center gap-1">
-                    View all <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <MetaQuestInstallLink />
+                    <button onClick={() => setActiveTab('trainings')} className="text-xs font-semibold text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                      View all <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {allScenarios.filter(s => isScenarioAllowed(s.type)).map((t) => {
@@ -691,7 +708,10 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           )}
           {activeTab === 'trainings' && (
             <div>
-              <h2 className="text-2xl font-bold text-white mb-2">All VR Disaster Simulations</h2>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-2xl font-bold text-white">All VR Disaster Simulations</h2>
+                <MetaQuestInstallLink />
+              </div>
               <p className="text-xs text-slate-400 mb-6">Access available scenarios or request permissions for locked modules from your Admin/Trainer.</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {allScenarios.filter(s => isScenarioAllowed(s.type)).map((t) => {
@@ -741,7 +761,10 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
 
           {activeTab === 'assignments' && (
             <div className="bg-[#13111c] border border-[#27213b] rounded-2xl p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">Assigned Trainings</h2>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-2xl font-bold text-white">Assigned Trainings</h2>
+                <MetaQuestInstallLink />
+              </div>
               <div className="space-y-4">
                 {assignments.map(item => (
                   <div key={item.assignmentId || item.id} className="p-5 rounded-xl bg-[#0a0910] border border-[#27213b] flex items-center justify-between flex-wrap gap-4">
