@@ -92,15 +92,42 @@ function convertUnitySimulation(simulation) {
 
     const eventsProvided = Array.isArray(simulation.events);
     const sourceEvents = eventsProvided ? simulation.events : [];
-    const events = sourceEvents
-        .filter(event => event && typeof event === "object" && EVENT_TYPES.includes(event.eventType))
-        .map(event => ({
-            eventType: event.eventType,
-            ...(event.timestamp ? { timestamp: event.timestamp } : {}),
-            ...(event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+    const UNITY_EVENT_MAP = {
+    FIRE_STARTED: "SCENARIO_STARTED",
+    PIN_REMOVED: "EXTINGUISHER_PIN_REMOVED",
+    PIN_REMOVED_BEFORE_POWER_OFF: "SAFETY_VIOLATION",
+    POWER_TURNED_OFF: "POWER_ISOLATED",
+    SPRAY_STARTED: "EXTINGUISHING_STARTED",
+    FIRE_EXTINGUISHED: "FIRE_EXTINGUISHED",
+    SPRAY_ATTEMPTED_POWER_ON: "WRONG_DECISION",
+    SPRAY_ATTEMPTED_PIN_NOT_REMOVED: "WRONG_DECISION"
+};
+
+const events = sourceEvents
+    .filter(event => event && typeof event === "object")
+    .map(event => {
+        const sourceEventName = event.eventName || event.eventType;
+
+        // Already-normalized backend event
+        const eventType = EVENT_TYPES.includes(sourceEventName)
+            ? sourceEventName
+            : UNITY_EVENT_MAP[sourceEventName];
+
+        if (!eventType) return null;
+
+        return {
+            eventType,
+            ...(event.timestamp || event.createdAt
+                ? { timestamp: event.timestamp || event.createdAt }
+                : {}),
+            ...(event.metadata &&
+            typeof event.metadata === "object" &&
+            !Array.isArray(event.metadata)
                 ? { metadata: event.metadata }
                 : {})
-        }));
+        };
+    })
+    .filter(Boolean);
     const extracted = performanceFeatureService.extractFeatures({ duration: 0 }, events);
     const decisionCount = extracted.correctDecisions + extracted.wrongDecisions;
     const hasEventType = eventType => events.some(event => event.eventType === eventType);

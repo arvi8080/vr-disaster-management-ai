@@ -24,15 +24,23 @@ class DirectAnalyzePayload(BaseModel):
 async def analyze_training_session(request: AnalyzeRequest):
     try:
         return analyze(request)
-    except Exception as e:
-        # Fallback to direct analyze if request shape differs
+    except Exception:
+        # Fallback to direct analyze if request shape differs.
         pf = request.performanceFeatures or {}
-        correct = getattr(pf, "correctDecisions", 8)
-        wrong = getattr(pf, "wrongDecisions", 1)
-        total_hazards = getattr(pf, "hazardsDetected", correct + wrong)
-        violations = getattr(pf, "safetyViolations", 0)
-        rescued = getattr(pf, "victimsRescued", 3)
-        duration = getattr(pf, "evacuationTime", 300)
+        if isinstance(pf, dict):
+            correct = pf.get("correctDecisions", pf.get("correct_decisions", 8))
+            wrong = pf.get("wrongDecisions", pf.get("wrong_decisions", 1))
+            total_hazards = pf.get("hazardsDetected", pf.get("hazards_detected", correct + wrong))
+            violations = pf.get("safetyViolations", pf.get("safety_violations", 0))
+            rescued = pf.get("victimsRescued", pf.get("victims_rescued", 3))
+            duration = pf.get("evacuationTime", pf.get("evacuation_time", 300))
+        else:
+            correct = getattr(pf, "correctDecisions", getattr(pf, "correct_decisions", 8))
+            wrong = getattr(pf, "wrongDecisions", getattr(pf, "wrong_decisions", 1))
+            total_hazards = getattr(pf, "hazardsDetected", getattr(pf, "hazards_detected", correct + wrong))
+            violations = getattr(pf, "safetyViolations", getattr(pf, "safety_violations", 0))
+            rescued = getattr(pf, "victimsRescued", getattr(pf, "victims_rescued", 3))
+            duration = getattr(pf, "evacuationTime", getattr(pf, "evacuation_time", 300))
 
         session = TrainingSessionInput(
             user_id=request.traineeId or "trainee-01",

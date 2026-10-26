@@ -843,25 +843,54 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-slate-400">Status: <strong className="text-white">{rep.status || 'Unavailable'}</strong></span>
                         {rep.sourceSystem === 'unity' ? (
-                          <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-700/40 text-slate-200 border border-slate-600">
-                            Evidence report · score not calculated
-                          </span>
-                        ) : (
-                          <>
-                            <span className="px-3 py-1.5 rounded-xl text-sm font-bold bg-slate-700/40 text-slate-200 border border-slate-600">
-                              {typeof rep.score === 'number' ? `Score: ${rep.score}%` : 'Score unavailable'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateAIAnalysis(rep.id)}
-                              disabled={!isCompleted || analyzingSessionId === rep.id}
-                              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {analyzingSessionId === rep.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                              {analyzingSessionId === rep.id ? 'Analyzing…' : analysis ? 'Refresh AI Feedback' : 'Generate AI Feedback'}
-                            </button>
-                          </>
-                        )}
+  <>
+    <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-700/40 text-slate-200 border border-slate-600">
+      Evidence report · {typeof rep.score === 'number' ? `Score: ${rep.score}%` : 'score not calculated'}
+    </span>
+
+    <button
+      type="button"
+      onClick={() => handleGenerateAIAnalysis(rep.id)}
+      disabled={!isCompleted || analyzingSessionId === rep.id}
+      className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {analyzingSessionId === rep.id ? (
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      {analyzingSessionId === rep.id
+        ? 'Analyzing…'
+        : analysis
+          ? 'Refresh AI Feedback'
+          : 'Generate AI Feedback'}
+    </button>
+  </>
+) : (
+  <>
+    <span className="px-3 py-1.5 rounded-xl text-sm font-bold bg-slate-700/40 text-slate-200 border border-slate-600">
+      {typeof rep.score === 'number' ? `Score: ${rep.score}%` : 'Score unavailable'}
+    </span>
+
+    <button
+      type="button"
+      onClick={() => handleGenerateAIAnalysis(rep.id)}
+      disabled={!isCompleted || analyzingSessionId === rep.id}
+      className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {analyzingSessionId === rep.id ? (
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      {analyzingSessionId === rep.id
+        ? 'Analyzing…'
+        : analysis
+          ? 'Refresh AI Feedback'
+          : 'Generate AI Feedback'}
+    </button>
+  </>
+)}
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
@@ -933,7 +962,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
                         </p>
                       </div>
                     </div>
-                    {analysis && rep.sourceSystem !== 'unity' && (
+                    {analysis && (
                       <section className="mt-5 rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-4" aria-label="AI session feedback">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <h4 className="font-semibold text-cyan-200">AI feedback</h4>

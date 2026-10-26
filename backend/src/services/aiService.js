@@ -41,14 +41,7 @@ class AIService {
             throw err;
         }
 
-        if (session.sourceSystem === "unity") {
-            return feedbackService.generateUnitySimulationFeedback(
-                session.traineeId,
-                sessionId,
-                session.performanceFeatures || {},
-                null
-            );
-        }
+
 
         // 2. Fetch events
         const events = await eventService.getAllEventsForSession(sessionId);
