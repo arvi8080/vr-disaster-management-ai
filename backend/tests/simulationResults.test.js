@@ -56,6 +56,36 @@ describe("Unity simulation result access", () => {
         assert.equal(normalized.features.victimsRescued, null);
     });
 
+    test("normalizes Unity completion timestamps without modifying stored event timestamps", () => {
+        const unixSeconds = 1760858103;
+        const simulation = validUnitySimulation({
+            completedAt: unixSeconds,
+            events: [{ eventType: "SAFETY_VIOLATION", timestamp: unixSeconds }]
+        });
+
+        const normalized = convertUnitySimulation(simulation);
+
+        assert.equal(normalized.completedAt.getTime(), unixSeconds * 1000);
+        assert.equal(normalized.features.events[0].timestamp, unixSeconds);
+        assert.equal(simulation.events[0].timestamp, unixSeconds);
+    });
+
+    test("preserves Unity safety violation action and reason as event metadata", () => {
+        const normalized = convertUnitySimulation(validUnitySimulation({
+            events: [{
+                eventType: "SAFETY_VIOLATION",
+                timestamp: "2026-10-04T09:59:00Z",
+                action: "Extinguisher pin removal",
+                reason: "The pin was removed before power isolation."
+            }]
+        }));
+
+        assert.deepEqual(normalized.features.events[0].metadata, {
+            action: "Extinguisher pin removal",
+            reason: "The pin was removed before power isolation."
+        });
+    });
+
     test("preserves recorded violations without calculating a protocol score", () => {
         const normalized = convertUnitySimulation(validUnitySimulation({
             procedureViolation: false,

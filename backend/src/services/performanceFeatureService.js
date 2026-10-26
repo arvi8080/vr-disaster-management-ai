@@ -1,3 +1,5 @@
+const { normalizeTimestamp, timestampMillis } = require("../utils/timestamp");
+
 class PerformanceFeatureService {
     extractFeatures(session, events, scenario = null) {
         let correctDecisions = 0;
@@ -19,16 +21,16 @@ class PerformanceFeatureService {
 
         const reactionTimes = [];
 
-        const startTime = session.startedAt && session.startedAt.toDate
-            ? session.startedAt.toDate().getTime()
-            : (events.length > 0 && events[0].createdAt ? new Date(events[0].createdAt).getTime() : Date.now());
+        const startTime = timestampMillis(session.startedAt) ??
+            (events.length > 0 ? timestampMillis(events[0].createdAt) : null);
 
         events.forEach(evt => {
-            const t = new Date(evt.timestamp || evt.createdAt).getTime();
+            const eventDate = normalizeTimestamp(evt.timestamp ?? evt.createdAt);
+            const t = eventDate?.getTime() ?? null;
 
             switch (evt.eventType) {
                 case "SCENARIO_STARTED":
-                    scenarioStartedTime = t;
+                    if (t !== null) scenarioStartedTime = t;
                     break;
                 case "PLAYER_MOVED":
                     playerMovedCount += 1;
@@ -46,7 +48,7 @@ class PerformanceFeatureService {
                     hazardsDetected += 1;
                     if (evt.metadata && typeof evt.metadata.responseTime === "number") {
                         reactionTimes.push(evt.metadata.responseTime);
-                    } else if (startTime) {
+                    } else if (startTime !== null && t !== null) {
                         reactionTimes.push(Math.max(0, (t - startTime) / 1000));
                     }
                     break;
@@ -72,13 +74,13 @@ class PerformanceFeatureService {
                     teamworkActions += 1;
                     break;
                 case "EVACUATION_STARTED":
-                    evacuationStartedTime = t;
+                    if (t !== null) evacuationStartedTime = t;
                     break;
                 case "EVACUATION_COMPLETED":
-                    evacuationCompletedTime = t;
+                    if (t !== null) evacuationCompletedTime = t;
                     break;
                 case "SCENARIO_COMPLETED":
-                    scenarioCompletedTime = t;
+                    if (t !== null) scenarioCompletedTime = t;
                     break;
                 default:
                     break;
@@ -145,4 +147,3 @@ class PerformanceFeatureService {
 }
 
 module.exports = new PerformanceFeatureService();
-

@@ -33,6 +33,11 @@ namespace ResQVerse.Disaster
             GetTracker().RecordSafetyViolation();
         }
 
+        public void ProcedureViolation(string action, string reason)
+        {
+            GetTracker().RecordSafetyViolation(action, reason);
+        }
+
         private PerformanceTracker GetTracker()
         {
             if (performanceTracker == null)

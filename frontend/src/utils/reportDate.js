@@ -8,7 +8,7 @@ export function reportDate(value) {
 
   let timestamp;
   if (typeof value === 'number') {
-    timestamp = value > 0 && value < 100000000000 ? value * 1000 : value;
+    timestamp = value > 0 && value < 1e12 ? value * 1000 : value;
   } else if (value && typeof value === 'object') {
     const seconds = value._seconds ?? value.seconds;
     const nanoseconds = value._nanoseconds ?? value.nanoseconds ?? 0;
@@ -19,7 +19,7 @@ export function reportDate(value) {
     timestamp = seconds * 1000 + nanoseconds / 1000000;
   } else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim())) {
     const numericValue = Number(value);
-    timestamp = numericValue > 0 && numericValue < 100000000000
+    timestamp = numericValue > 0 && numericValue < 1e12
       ? numericValue * 1000
       : numericValue;
   } else if (typeof value === 'string') {

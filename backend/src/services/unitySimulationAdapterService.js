@@ -7,23 +7,13 @@ const performanceFeatureService = require("./performanceFeatureService");
 const skillTwinService = require("./skillTwinService");
 const feedbackService = require("./feedbackService");
 const { EVENT_TYPES, SESSION_STATUS } = require("../utils/constants");
+const { normalizeTimestamp } = require("../utils/timestamp");
 const logger = require("../utils/logger");
 
 const OBJECTIVE_FLAGS = ["pinWasRemoved", "powerWasTurnedOff", "fireWasExtinguished"];
 
 function createUnitySessionId(simulationId) {
     return `unity_${createHash("sha256").update(simulationId).digest("hex")}`;
-}
-
-function toDate(value) {
-    if (value && typeof value.toDate === "function") {
-        return value.toDate();
-    }
-    if (typeof value === "string" || typeof value === "number" || value instanceof Date) {
-        const date = new Date(value);
-        if (!Number.isNaN(date.getTime())) return date;
-    }
-    return null;
 }
 
 function validateOptionalDuration(simulation, field) {
@@ -59,7 +49,7 @@ function convertUnitySimulation(simulation) {
         }
     }
 
-    const completedAt = toDate(simulation.completedAt);
+    const completedAt = normalizeTimestamp(simulation.completedAt);
     if (!completedAt) {
         throw new Error("Invalid Unity simulation telemetry: completedAt must be a valid date.");
     }
@@ -115,16 +105,23 @@ const events = sourceEvents
 
         if (!eventType) return null;
 
-        return {
-            eventType,
-            ...(event.timestamp || event.createdAt
-                ? { timestamp: event.timestamp || event.createdAt }
-                : {}),
+        const timestamp = event.timestamp ?? event.createdAt;
+        const metadata = {
             ...(event.metadata &&
             typeof event.metadata === "object" &&
             !Array.isArray(event.metadata)
-                ? { metadata: event.metadata }
-                : {})
+                ? event.metadata
+                : {}),
+            ...(typeof event.action === "string" ? { action: event.action } : {}),
+            ...(typeof event.reason === "string" ? { reason: event.reason } : {})
+        };
+
+        return {
+            eventType,
+            ...(timestamp !== undefined && timestamp !== null
+                ? { timestamp }
+                : {}),
+            ...(Object.keys(metadata).length > 0 ? { metadata } : {})
         };
     })
     .filter(Boolean);

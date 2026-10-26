@@ -30,11 +30,20 @@ namespace ResQVerse.Unity
     {
         public string eventType;
         public string timestamp;
+        public string action;
+        public string reason;
 
         public SimulationEventRecord(string type, DateTime time)
+            : this(type, time, null, null)
+        {
+        }
+
+        public SimulationEventRecord(string type, DateTime time, string action, string reason)
         {
             eventType = type;
             timestamp = time.ToUniversalTime().ToString("o");
+            this.action = action;
+            this.reason = reason;
         }
     }
 }

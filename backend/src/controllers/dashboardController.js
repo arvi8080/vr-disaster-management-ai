@@ -1,5 +1,6 @@
 const { db } = require("../config/firebase");
 const skillTwinService = require("../services/skillTwinService");
+const { timestampMillis } = require("../utils/timestamp");
 const { sendSuccess } = require("../utils/response");
 const { ROLES, TRENDS } = require("../utils/constants");
 
@@ -64,7 +65,10 @@ class DashboardController {
             const totalScore = scoredSessions.reduce((total, session) => total + session.score, 0);
             const averageScore = scoredSessions.length > 0 ? Math.round(totalScore / scoredSessions.length) : 0;
 
-            completedSessions.sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
+            completedSessions.sort((a, b) =>
+                (timestampMillis(b.completedAt ?? b.createdAt) ?? 0) -
+                (timestampMillis(a.completedAt ?? a.createdAt) ?? 0)
+            );
             const latestScore = completedSessions.length > 0 && typeof completedSessions[0].score === "number"
                 ? completedSessions[0].score
                 : 0;
@@ -176,7 +180,10 @@ class DashboardController {
                 }
             });
 
-            sessions.sort((a, b) => new Date(b.createdAt || b.startedAt) - new Date(a.createdAt || a.startedAt));
+            sessions.sort((a, b) =>
+                (timestampMillis(b.createdAt ?? b.startedAt) ?? 0) -
+                (timestampMillis(a.createdAt ?? a.startedAt) ?? 0)
+            );
 
             return sendSuccess(res, {
                 totalTrainees,

@@ -3,6 +3,7 @@ import { AlertCircle, Brain, RefreshCw } from 'lucide-react';
 import { fetchMySkillTwin, fetchMySkillTwinHistory } from '../services/skillTwinService';
 import { fetchMyFeedback } from '../services/feedbackService';
 import { fetchMySessions } from '../services/trainingService';
+import { formatEventDate, reportDate } from '../utils/reportDate';
 
 const SKILL_LABELS = {
   decisionMaking: 'Decision Making',
@@ -13,13 +14,6 @@ const SKILL_LABELS = {
   communication: 'Communication',
   teamwork: 'Teamwork'
 };
-
-function getTimestamp(value) {
-  if (value?._seconds !== undefined) return value._seconds * 1000;
-  if (typeof value?.toDate === 'function') return value.toDate().getTime();
-  const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? null : timestamp;
-}
 
 function getUnitySessionObservations(session) {
   if (!session || session.sourceSystem !== 'unity') return [];
@@ -76,11 +70,18 @@ function getUnitySessionObservations(session) {
   return observations;
 }
 
+function formatUnityObservation(observation) {
+  if (typeof observation !== 'string') return observation;
+  const match = observation.match(/^(Safety violation recorded(?: during [^.]+)?) at (.+)\.$/);
+  if (!match) return observation;
+  return `${match[1]} at ${formatEventDate(match[2])}.`;
+}
+
 function ProgressChart({ history }) {
   const points = history
     .map((record, index) => ({
       score: record.overallScore,
-      timestamp: getTimestamp(record.createdAt),
+      timestamp: reportDate(record.createdAt),
       index
     }))
     .filter(point => typeof point.score === 'number' && Number.isFinite(point.score));
@@ -129,7 +130,7 @@ function ProgressChart({ history }) {
             <g key={`${point.timestamp ?? point.index}-${index}`}>
               <circle cx={xFor(index)} cy={yFor(point.score)} r="5" fill="var(--theme-brand)" />
               <title>
-                {`${point.timestamp === null ? `Session ${point.index + 1}` : new Date(point.timestamp).toLocaleDateString()}: ${point.score}`}
+                {`${point.timestamp === null ? `Session ${point.index + 1}` : point.timestamp.toLocaleDateString()}: ${point.score}`}
               </title>
               {(points.length <= 10 || index === 0 || index === points.length - 1) && (
                 <text x={xFor(index)} y={yFor(point.score) - 10} textAnchor="middle" className="fill-slate-200" fontSize="11">
@@ -138,7 +139,7 @@ function ProgressChart({ history }) {
               )}
               {(index % labelStep === 0 || index === points.length - 1) && (
                 <text x={xFor(index)} y={height - 14} textAnchor="middle" className="fill-slate-400" fontSize="10">
-                  {point.timestamp === null ? `Session ${point.index + 1}` : new Date(point.timestamp).toLocaleDateString()}
+                  {point.timestamp === null ? `Session ${point.index + 1}` : point.timestamp.toLocaleDateString()}
                 </text>
               )}
             </g>
@@ -360,7 +361,7 @@ export default function SkillTwinPanel({ user }) {
             <p className="text-xs text-slate-400">Recorded results from your Unity simulation. No unobserved events are inferred.</p>
             {unityObservations.length > 0 ? (
               <ul className="list-disc space-y-1 pl-5">
-                {unityObservations.map((item, index) => <li key={`observation-${index}`}>{item}</li>)}
+                {unityObservations.map((item, index) => <li key={`observation-${index}`}>{formatUnityObservation(item)}</li>)}
               </ul>
             ) : sessionsError ? (
               <p role="alert" className="text-amber-300">Saved Unity session details are unavailable.</p>

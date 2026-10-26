@@ -65,6 +65,13 @@ namespace ResQVerse.Assessment
         {
             EnsureRunning();
             if (_pinWasRemoved == true) return;
+            if (_powerWasTurnedOff != true)
+            {
+                _eventTracker.RecordSafetyViolation(
+                    "Extinguisher pin removal",
+                    "The extinguisher pin was removed before power isolation was recorded.");
+                _procedureViolation = true;
+            }
             _pinWasRemoved = true;
             _pinRemovalTime = (float)_clock.Elapsed.TotalSeconds;
             _eventTracker.Record("EXTINGUISHER_PIN_REMOVED");
@@ -76,6 +83,16 @@ namespace ResQVerse.Assessment
             EnsureRunning();
             if (!_extinguishingStartedAt.HasValue)
             {
+                var missingSteps = new System.Collections.Generic.List<string>();
+                if (_powerWasTurnedOff != true) missingSteps.Add("power isolation");
+                if (_pinWasRemoved != true) missingSteps.Add("extinguisher pin removal");
+                if (missingSteps.Count > 0)
+                {
+                    _eventTracker.RecordSafetyViolation(
+                        "Extinguisher operation",
+                        $"Extinguishing began before required step(s): {string.Join(" and ", missingSteps)}.");
+                    _procedureViolation = true;
+                }
                 _extinguishingStartedAt = (float)_clock.Elapsed.TotalSeconds;
                 _eventTracker.Record("EXTINGUISHING_STARTED");
             }
@@ -99,6 +116,13 @@ namespace ResQVerse.Assessment
             EnsureRunning();
             _procedureViolation = true;
             _eventTracker.RecordSafetyViolation();
+        }
+
+        public void RecordSafetyViolation(string action, string reason)
+        {
+            EnsureRunning();
+            _procedureViolation = true;
+            _eventTracker.RecordSafetyViolation(action, reason);
         }
 
         public void RecordCorrectDecision()

@@ -1,6 +1,7 @@
 const { db } = require("../config/firebase");
 const { FieldValue } = require("firebase-admin/firestore");
 const { executePaginatedQuery } = require("../utils/pagination");
+const { timestampMillis } = require("../utils/timestamp");
 
 class EventService {
     async addEvent(eventData, traineeId) {
@@ -62,10 +63,12 @@ class EventService {
         });
 
         // Sort by timestamp
-        events.sort((a, b) => new Date(a.timestamp || a.createdAt) - new Date(b.timestamp || b.createdAt));
+        events.sort((a, b) =>
+            (timestampMillis(a.timestamp ?? a.createdAt) ?? 0) -
+            (timestampMillis(b.timestamp ?? b.createdAt) ?? 0)
+        );
         return events;
     }
 }
 
 module.exports = new EventService();
-

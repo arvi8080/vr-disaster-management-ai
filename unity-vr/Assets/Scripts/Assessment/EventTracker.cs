@@ -35,6 +35,12 @@ namespace ResQVerse.Assessment
             Record("SAFETY_VIOLATION");
         }
 
+        public void RecordSafetyViolation(string action, string reason)
+        {
+            SafetyViolations++;
+            _events.Add(new SimulationEventRecord("SAFETY_VIOLATION", DateTime.UtcNow, action, reason));
+        }
+
         public void RecordCorrectDecision()
         {
             CorrectDecisions++;

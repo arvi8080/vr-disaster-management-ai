@@ -1,20 +1,13 @@
 const { db } = require("../config/firebase");
 const { FieldValue } = require("firebase-admin/firestore");
 const { SKILL_UPDATE_WEIGHTS, TRENDS } = require("../utils/constants");
+const { timestampMillis } = require("../utils/timestamp");
 const logger = require("../utils/logger");
 const { createHash } = require("node:crypto");
 const SKILL_KEYS = [
     "decisionMaking", "situationalAwareness", "safetyAwareness",
     "evacuationSkill", "emergencyResponse", "communication", "teamwork"
 ];
-
-function timestampMillis(value) {
-    if (value && typeof value.toDate === "function") {
-        return value.toDate().getTime();
-    }
-    const timestamp = new Date(value).getTime();
-    return Number.isNaN(timestamp) ? 0 : timestamp;
-}
 
 class SkillTwinService {
     constructor(database = db) {
@@ -250,7 +243,9 @@ class SkillTwinService {
             history.push({ id: doc.id, ...doc.data() });
         });
 
-        history.sort((a, b) => timestampMillis(a.createdAt) - timestampMillis(b.createdAt));
+        history.sort((a, b) =>
+            (timestampMillis(a.createdAt) ?? 0) - (timestampMillis(b.createdAt) ?? 0)
+        );
         return history;
     }
 
@@ -264,8 +259,8 @@ class SkillTwinService {
             sessions.push({ id: doc.id, ...doc.data() });
         });
         sessions.sort((a, b) =>
-            timestampMillis(a.completedAt || a.createdAt) -
-            timestampMillis(b.completedAt || b.createdAt)
+            (timestampMillis(a.completedAt ?? a.createdAt) ?? 0) -
+            (timestampMillis(b.completedAt ?? b.createdAt) ?? 0)
         );
 
         const history = await this.getSkillHistory(traineeId);

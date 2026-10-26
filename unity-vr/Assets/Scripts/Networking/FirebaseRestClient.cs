@@ -193,10 +193,16 @@ namespace ResQVerse.Unity
                 foreach (var item in result.events)
                 {
                     if (item == null || string.IsNullOrWhiteSpace(item.eventType)) continue;
-                    eventValues.Add("{\"mapValue\":{\"fields\":{" +
-                        StringField("eventType", item.eventType) + "," +
-                        TimestampField("timestamp", item.timestamp) +
-                        "}}}");
+                    var eventFields = new List<string>
+                    {
+                        StringField("eventType", item.eventType),
+                        TimestampField("timestamp", item.timestamp)
+                    };
+                    if (!string.IsNullOrWhiteSpace(item.action))
+                        eventFields.Add(StringField("action", item.action));
+                    if (!string.IsNullOrWhiteSpace(item.reason))
+                        eventFields.Add(StringField("reason", item.reason));
+                    eventValues.Add("{\"mapValue\":{\"fields\":{" + string.Join(",", eventFields) + "}}}");
                 }
             }
             fields.Add($"\"events\":{{\"arrayValue\":{{\"values\":[{string.Join(",", eventValues)}]}}}}");

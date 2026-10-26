@@ -1,6 +1,7 @@
 const { db } = require("../config/firebase");
 const { FieldValue } = require("firebase-admin/firestore");
 const { executePaginatedQuery } = require("../utils/pagination");
+const { normalizeTimestamp } = require("../utils/timestamp");
 
 const UNITY_OBJECTIVES = {
     powerWasTurnedOff: "Power isolation",
@@ -66,7 +67,8 @@ function buildUnitySimulationFeedback(features = {}) {
     for (const event of features.events || []) {
         if (event.eventType === "SAFETY_VIOLATION") {
             const detail = typeof event.metadata?.action === "string" ? ` during ${event.metadata.action}` : "";
-            observations.push(`Safety violation recorded${detail}${event.timestamp ? ` at ${event.timestamp}` : ""}.`);
+            const eventTime = normalizeTimestamp(event.timestamp);
+            observations.push(`Safety violation recorded${detail}${eventTime ? ` at ${eventTime.toISOString()}` : ""}.`);
         }
     }
 

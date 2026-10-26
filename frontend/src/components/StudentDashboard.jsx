@@ -7,7 +7,8 @@ import { fetchScenarios } from '../services/scenarioService';
 import { fetchAllMySessions, fetchAssignmentsForMe, fetchMySessions } from '../services/trainingService';
 import { analyzeTrainingSession } from '../services/aiService';
 import ThemeToggle from './ThemeToggle';
-import { formatEventDate, formatReportDate, timestampMillis } from '../utils/reportDate';
+import { formatEventDate, formatReportDate, reportDate, timestampMillis } from '../utils/reportDate';
+import { getSafetyPracticeObjective, getSafetyViolationDetail, getUnityEventLabel, getUnitySequence, getUnityTiming } from '../utils/unityReportEvidence';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -45,9 +46,12 @@ function MetaQuestInstallLink() {
   );
 }
 
-function formatActionDuration(value, actionResult) {
+function formatUnityTiming(timing, actionResult) {
   if (actionResult === 'Not completed') return 'Not completed';
-  return formatSeconds(value);
+  if (timing.seconds === null) {
+    return actionResult === 'Completed' ? 'Completed; duration unavailable' : 'Unavailable';
+  }
+  return formatSeconds(timing.seconds);
 }
 
 function getUnityEvents(session) {
@@ -62,37 +66,6 @@ function getActionResult(session, flag, eventType) {
   return getUnityEvents(session).some(event => event.eventType === eventType)
     ? 'Completed'
     : 'Unknown / not assessed';
-}
-
-function getProcedureSequence(session) {
-  const events = getUnityEvents(session);
-  const actionTypes = ['POWER_ISOLATED', 'EXTINGUISHER_PIN_REMOVED', 'EXTINGUISHING_STARTED'];
-  const actionEvents = actionTypes.map(eventType => events.find(event => event.eventType === eventType));
-  if (actionEvents.some(event => !event)) return 'Unknown / not assessed';
-  const timestamps = actionEvents.map(event => timestampMillis(event.timestamp));
-  if (timestamps.some(timestamp => timestamp === 0)) return 'Unknown / not assessed';
-  return timestamps[0] < timestamps[1] && timestamps[1] < timestamps[2]
-    ? 'Correct sequence recorded'
-    : 'Out of sequence';
-}
-
-function getObservedSequenceDetail(session) {
-  const events = getUnityEvents(session);
-  const eventTime = eventType => timestampMillis(events.find(event => event.eventType === eventType)?.timestamp);
-  const powerTime = eventTime('POWER_ISOLATED');
-  const pinTime = eventTime('EXTINGUISHER_PIN_REMOVED');
-  const startTime = eventTime('EXTINGUISHING_STARTED');
-
-  if (powerTime > 0 && pinTime > 0 && pinTime < powerTime) {
-    return 'Recorded action order: pin removal occurred before power isolation.';
-  }
-  if (pinTime > 0 && startTime > 0 && startTime < pinTime) {
-    return 'Recorded action order: extinguishing began before pin removal.';
-  }
-  if (powerTime > 0 && startTime > 0 && startTime < powerTime) {
-    return 'Recorded action order: extinguishing began before power isolation.';
-  }
-  return null;
 }
 
 function getAttemptNumber(sessions, session) {
@@ -154,6 +127,12 @@ function getEvidenceFeedback(session) {
 
 function getFeedbackEvidence(session, text) {
   const lowerText = text.toLowerCase();
+  const violations = getUnityEvents(session).filter(event => event.eventType === 'SAFETY_VIOLATION');
+  if (lowerText.includes('practice') && violations.length > 0) {
+    return violations.map(event =>
+      `${getSafetyViolationDetail(session, event)} (${formatEventDate(event.timestamp)})`
+    ).join('; ');
+  }
   if (lowerText.includes('power')) {
     return `${getActionResult(session, 'powerWasTurnedOff', 'POWER_ISOLATED')}; recorded Unity power flag/event`;
   }
@@ -169,9 +148,8 @@ function getFeedbackEvidence(session, text) {
         : 'No fire outcome event recorded';
   }
   if (lowerText.includes('procedur')) {
-    const violations = getUnityEvents(session).filter(event => event.eventType === 'SAFETY_VIOLATION');
     return violations.length
-      ? violations.map(event => `SAFETY_VIOLATION${event.timestamp !== undefined && event.timestamp !== null ? ` at ${formatEventDate(event.timestamp)}` : ''}`).join('; ')
+      ? violations.map(event => `${getUnityEventLabel(event.eventType)}${event.timestamp !== undefined && event.timestamp !== null ? ` at ${formatEventDate(event.timestamp)}` : ''}: ${getSafetyViolationDetail(session, event)}`).join('; ')
       : `procedureViolation=${session.procedureViolation ?? 'unknown'}`;
   }
   return 'No specific recorded event was available.';
@@ -236,23 +214,18 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
     });
   };
   const formatAssignmentDate = value => {
-    const timestamp = value?._seconds ? value._seconds * 1000 : value;
-    const date = new Date(timestamp);
-    return value && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Not specified';
+    return reportDate(value)?.toLocaleString() || 'Not specified';
   };
   const getSessionDate = (session) => {
     const value = session.completedAt || session.createdAt;
-    const date = value?._seconds ? new Date(value._seconds * 1000) : new Date(value);
-    return value && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Date unavailable';
+    return formatReportDate(value);
   };
 
   const getAllSessionsForReport = async () => {
     const allSessions = await fetchAllMySessions();
-    return allSessions.sort((a, b) => {
-      const dateA = new Date(a.completedAt?._seconds ? a.completedAt._seconds * 1000 : a.completedAt || a.createdAt || 0);
-      const dateB = new Date(b.completedAt?._seconds ? b.completedAt._seconds * 1000 : b.completedAt || b.createdAt || 0);
-      return dateB - dateA;
-    });
+    return allSessions.sort((a, b) =>
+      timestampMillis(b.completedAt ?? b.createdAt) - timestampMillis(a.completedAt ?? a.createdAt)
+    );
   };
 
   const handleDownloadReport = async () => {
@@ -281,7 +254,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           Number.isFinite(session.safetyViolations)
             ? Math.max(session.safetyViolations, events.filter(event => event.eventType === 'SAFETY_VIOLATION').length)
             : events.filter(event => event.eventType === 'SAFETY_VIOLATION').length || 'Unknown',
-          events.map(event => `${event.eventType}${event.timestamp !== undefined && event.timestamp !== null ? ` @ ${formatEventDate(event.timestamp)}` : ''}`).join('; ') || 'No event history recorded'
+          events.map(event => `${getUnityEventLabel(event.eventType)}${event.timestamp !== undefined && event.timestamp !== null ? ` @ ${formatEventDate(event.timestamp)}` : ''}`).join('; ') || 'No event history recorded'
         ]);
       });
 
@@ -336,45 +309,85 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
         const violationCount = Number.isFinite(session.safetyViolations)
           ? Math.max(session.safetyViolations, violations.length)
           : violations.length || (session.procedureViolation === true ? 1 : null);
+        const sequence = getUnitySequence(session);
+        const violationDetails = violations.length > 0
+          ? [...new Set(violations.map(event => getSafetyViolationDetail(session, event)))]
+          : violationCount > 0
+            ? [sequence.detail || 'Unity recorded a safety violation but did not record its specific cause.']
+            : [];
         const violationList = violations.map(event => {
-          const action = event.metadata?.action || 'Safety violation recorded; specific action not provided';
+          const action = event.metadata?.action || event.action || getUnityEventLabel(event.eventType);
           const time = formatEventDate(event.timestamp);
           const reason = event.metadata?.reason
-            || getObservedSequenceDetail(session)
-            || 'Unity recorded a safety violation but did not provide its specific cause.';
+            || event.reason
+            || getSafetyViolationDetail(session, event);
           return `<li>${escapeHtml(action)} — ${escapeHtml(time)}. ${escapeHtml(reason)}</li>`;
         }).join('');
-        const objectiveSequence = getProcedureSequence(session);
+        const objectiveSequence = sequence.result;
         const sequenceEvidence = objectiveSequence === 'Unknown / not assessed'
           ? 'Timestamped power, pin, and extinguisher-start events are required.'
-          : 'Expected order: isolate power, remove pin, then begin extinguisher operation.';
+          : sequence.detail || 'Expected order: isolate power, remove pin, then begin extinguisher operation.';
         const renderFeedbackItem = (item, interpretation) => `<li><strong>Observation:</strong> ${escapeHtml(item)} <strong>Evidence:</strong> ${escapeHtml(getFeedbackEvidence(session, item))} <strong>Interpretation:</strong> ${escapeHtml(interpretation)}</li>`;
         const strengthItems = feedback.strengths
           .map(item => renderFeedbackItem(item, 'This action was recorded in this attempt only.'))
           .join('');
         const improvementItems = feedback.improvements
+          .filter(item => !item.toLowerCase().includes('procedural violation'))
+          .concat(violationDetails.map(detail => `Safety finding: ${detail}`))
+          .filter((item, index, items) => items.indexOf(item) === index)
           .map(item => renderFeedbackItem(item, 'This is a recorded gap for this attempt; it is not a long-term competency judgment.'))
           .join('');
-        const practiceItems = feedback.practice
+        const practiceRecommendations = violationCount > 0
+          ? [getSafetyPracticeObjective(session), ...feedback.practice.filter(item => !item.toLowerCase().includes('procedure violation'))]
+          : feedback.practice;
+        const practiceItems = practiceRecommendations
+          .filter((item, index, items) => items.indexOf(item) === index)
           .map(item => `<li><strong>Recommendation:</strong> ${escapeHtml(item)} <strong>Evidence basis:</strong> ${escapeHtml(getFeedbackEvidence(session, item))}</li>`)
           .join('');
-        const eventRows = events.map(event => `<li>${escapeHtml(event.eventType)} — ${escapeHtml(formatEventDate(event.timestamp))}</li>`).join('');
-        const duration = session.unityMetrics?.totalResponseTime ?? session.duration;
+        const eventRows = events.map(event => `<li>${escapeHtml(getUnityEventLabel(event.eventType))} — ${escapeHtml(formatEventDate(event.timestamp))}</li>`).join('');
+        const totalTiming = getUnityTiming(session, 'totalResponseTime');
+        const duration = totalTiming.seconds ?? session.duration;
+        const powerTiming = getUnityTiming(session, 'powerIsolationTime');
+        const pinTiming = getUnityTiming(session, 'pinRemovalTime');
+        const extinguishingTiming = getUnityTiming(session, 'extinguishingTime');
+        const timingComparisons = previousSession
+          ? [
+              ['Power isolation', 'powerIsolationTime'],
+              ['Pin removal', 'pinRemovalTime'],
+              ['Extinguishing', 'extinguishingTime'],
+              ['Total response', 'totalResponseTime']
+            ].flatMap(([label, metric]) => {
+              const earlier = getUnityTiming(previousSession, metric).seconds;
+              const current = getUnityTiming(session, metric).seconds;
+              if (earlier === null || current === null) return [];
+              const difference = Math.abs(earlier - current);
+              const comparison = current < earlier
+                ? `faster by ${difference.toFixed(2)} s`
+                : current > earlier
+                  ? `slower by ${difference.toFixed(2)} s`
+                  : 'unchanged';
+              return [`${label}: ${comparison}`];
+            })
+          : [];
+        const timingWarnings = [totalTiming, powerTiming, pinTiming, extinguishingTiming]
+          .filter(timing => timing.warning)
+          .map(timing => `<li>${escapeHtml(timing.warning)}</li>`)
+          .join('');
         const initialLabel = attempt === 1 ? 'Initial assessment (first attempt)' : `Attempt ${attempt}`;
         const status = getSessionStatus(session);
         const sessionSummary = `Session ${attempt}: ${getSessionTitle(session)}. ${status}.`;
         const twinProgress = attempt === 1
           ? 'This first attempt establishes an initial baseline only; it does not establish a stable competency profile or long-term trend.'
           : previousSession
-            ? `Compared with attempt ${getAttemptNumber(allSessions, previousSession)}: power isolation ${getActionResult(previousSession, 'powerWasTurnedOff', 'POWER_ISOLATED')} → ${powerResult}; pin removal ${getActionResult(previousSession, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED')} → ${pinResult}. This is an attempt-level comparison, not a stable competency trend.`
+            ? `Compared with attempt ${getAttemptNumber(allSessions, previousSession)}: power isolation ${getActionResult(previousSession, 'powerWasTurnedOff', 'POWER_ISOLATED')} → ${powerResult}; pin removal ${getActionResult(previousSession, 'pinWasRemoved', 'EXTINGUISHER_PIN_REMOVED')} → ${pinResult}.${timingComparisons.length ? ` Response times: ${timingComparisons.join('; ')}.` : ' Response-time comparison unavailable because a required time was not recorded.'} This is an attempt-level comparison, not a stable competency trend.`
             : `Attempt ${attempt} is available for comparison with earlier sessions; no stable competency or trend is inferred from a single attempt.`;
         const recurringViolationAttempts = scenarioSessions.filter(item =>
           item.procedureViolation === true
           || (Number.isFinite(item.safetyViolations) && item.safetyViolations > 0)
           || getUnityEvents(item).some(event => event.eventType === 'SAFETY_VIOLATION')
         ).length;
-        const nextObjective = objectiveSequence === 'Out of sequence'
-          ? 'Practice isolating power, removing the extinguisher pin, and only then beginning extinguisher operation.'
+        const nextObjective = objectiveSequence === 'Out of sequence' || violationCount > 0
+          ? getSafetyPracticeObjective(session)
           : feedback.practice[0]
             || (attempt === 1
               ? 'Repeat Computer Lab Fire Safety to establish a second attempt and confirm all required actions are recorded.'
@@ -383,13 +396,17 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           <h2>${escapeHtml(sessionSummary)}</h2>
           <h3>01 — Session overview</h3>
           <table><tbody>
-            <tr><th>Trainee</th><td>${escapeHtml(user.name || 'Unavailable')}</td><th>Email</th><td>${escapeHtml(user.email || 'Unavailable')}</td></tr>
             <tr><th>Simulation</th><td>${escapeHtml(getSessionTitle(session))}</td><th>Attempt type</th><td>${escapeHtml(initialLabel)}</td></tr>
             <tr><th>Fire location</th><td>${escapeHtml(session.fireLocation || 'Not recorded')}</td><th>Session number</th><td>${escapeHtml(attempt)}</td></tr>
             <tr><th>Date/time</th><td>${escapeHtml(formatReportDate(session.completedAt || session.createdAt))}</td><th>Status</th><td>${escapeHtml(status)}</td></tr>
-            <tr><th>Duration</th><td>${escapeHtml(formatSeconds(duration))}</td><th>Objectives completed</th><td>${escapeHtml(objectivesCompleted ?? 'Unknown')}</td></tr>
+            <tr><th>Total response time</th><td>${escapeHtml(formatSeconds(duration))}</td><th>Recorded objectives completed</th><td>${escapeHtml(objectivesCompleted ?? 'Unknown')}</td></tr>
+            <tr><th>Action evidence</th><td colspan="3">Power isolation, pin removal, and extinguisher operation are reported as separate action observations; action completion alone is not a proficiency score.</td></tr>
             <tr><th>Recorded safety violations</th><td colspan="3">${escapeHtml(violationCount ?? 'Unknown')}</td></tr>
-            <tr><th>Safety outcome</th><td colspan="3">${escapeHtml(violationCount > 0 ? 'Not a safe completion' : violationCount === 0 && status === 'Completed' ? 'Completed with no recorded violations' : 'Unknown / incomplete')}</td></tr>
+            <tr><th>Safety outcome</th><td colspan="3">${escapeHtml(violationCount > 0
+              ? `Unsafe completion — ${violationDetails.join('; ')}`
+              : violationCount === 0 && status === 'Completed'
+                ? 'Completed with no recorded violations'
+                : 'Unknown / incomplete')}</td></tr>
           </tbody></table>
           <h3>02 — Required action assessment</h3>
           <table><thead><tr><th>Action</th><th>Result</th><th>Evidence</th></tr></thead><tbody>
@@ -400,23 +417,24 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           </tbody></table>
           <h3>03 — Response metrics</h3>
           <table><thead><tr><th>Metric</th><th>Result</th><th>Start → end definition</th></tr></thead><tbody>
-            <tr><td>Time to isolate power</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.powerIsolationTime, powerResult))}</td><td>Scenario start → POWER_ISOLATED</td></tr>
-            <tr><td>Time to remove pin</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.pinRemovalTime, pinResult))}</td><td>Scenario start → EXTINGUISHER_PIN_REMOVED</td></tr>
-            <tr><td>Time to extinguish</td><td>${escapeHtml(formatActionDuration(session.unityMetrics?.extinguishingTime, fireResult))}</td><td>EXTINGUISHING_STARTED → FIRE_EXTINGUISHED</td></tr>
-            <tr><td>Total response time</td><td>${escapeHtml(status === 'Completed' ? formatSeconds(duration) : 'Not completed')}</td><td>SCENARIO_STARTED → SCENARIO_COMPLETED</td></tr>
+            <tr><td>Time to isolate power</td><td>${escapeHtml(formatUnityTiming(powerTiming, powerResult))}</td><td>Scenario started → power isolated (${escapeHtml(powerTiming.source)})</td></tr>
+            <tr><td>Time to remove pin</td><td>${escapeHtml(formatUnityTiming(pinTiming, pinResult))}</td><td>Scenario started → pin removed (${escapeHtml(pinTiming.source)})</td></tr>
+            <tr><td>Time to extinguish</td><td>${escapeHtml(formatUnityTiming(extinguishingTiming, fireResult))}</td><td>Extinguisher operation started → fire extinguished (${escapeHtml(extinguishingTiming.source)})</td></tr>
+            <tr><td>Total response time</td><td>${escapeHtml(status === 'Completed' ? formatSeconds(duration) : 'Not completed')}</td><td>Scenario started → scenario completed (${escapeHtml(totalTiming.source)})</td></tr>
           </tbody></table>
+          ${timingWarnings ? `<p><strong>Timing validation:</strong><ul>${timingWarnings}</ul></p>` : ''}
           <h3>04 — Safety events</h3>
-          ${violationList ? `<ul>${violationList}</ul>` : violationCount === 0 ? '<p>No procedural violation was recorded.</p>' : '<p>Violation details were not recorded; no action or timestamp is inferred.</p>'}
+          ${violationList ? `<ul>${violationList}</ul>` : violationCount === 0 ? '<p>No procedural violation was recorded.</p>' : `<ul>${violationDetails.map(detail => `<li>${escapeHtml(detail)} (event time unavailable)</li>`).join('')}</ul>`}
           <h3>05 — Evidence-based performance feedback</h3>
           <p>Feedback below is generated only from recorded action flags and events.</p>
           <div class="feedback"><strong>What went well</strong><ul>${strengthItems || '<li>No verified successful action recorded.</li>'}</ul>
           <strong>What needs improvement</strong><ul>${improvementItems || '<li>No specific recorded mistake available.</li>'}</ul>
           <strong>Recommended practice</strong><ul>${practiceItems || '<li>No corrective exercise assigned from the available evidence.</li>'}</ul></div>
-          <h3>06 — Digital Skill Twin progress</h3>
+          <h3>06 — Attempt-to-attempt progress</h3>
           <p>${escapeHtml(twinProgress)}</p>
           ${recurringViolationAttempts > 1 ? `<p>Recurring evidence: a procedural violation was recorded in ${recurringViolationAttempts} attempts for this scenario.</p>` : '<p>No recurring procedural error is established from the available attempts.</p>'}
           <p><strong>Recommended next training objective:</strong> ${escapeHtml(nextObjective)}</p>
-          <p>Demonstrated competencies: ${escapeHtml([
+          <p>Actions recorded as completed (not a proficiency rating): ${escapeHtml([
             ...(powerResult === 'Completed' ? ['Power isolation'] : []),
             ...(pinResult === 'Completed' ? ['Extinguisher pin removal'] : []),
             ...(fireResult === 'Completed' ? ['Fire extinguishing'] : [])
