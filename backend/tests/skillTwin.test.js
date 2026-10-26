@@ -1,15 +1,22 @@
 const { test, describe } = require("node:test");
-const assert = require("node:assert");
+const assert = require("node:assert/strict");
+const { SkillTwinService } = require("../src/services/skillTwinService");
 
 describe("Digital Skill Twin Calculation Tests", () => {
-    test("Exponential Moving Average calculation logic", () => {
-        // Initial profile: 50
-        const prevSkill = 50;
-        const sessionScore = 90;
-        // Formula: prev * 0.7 + curr * 0.3 = 35 + 27 = 62
-        const updatedSkill = Math.round(prevSkill * 0.7 + sessionScore * 0.3);
+    test("initial Skill Twin scores are zero before training", async () => {
+        const service = new SkillTwinService({
+            collection: () => ({
+                doc: () => ({
+                    get: async () => ({ exists: false })
+                })
+            })
+        });
 
-        assert.strictEqual(updatedSkill, 62);
+        const profile = await service.getSkillTwin("trainee-1");
+
+        assert.equal(profile.overallScore, 0);
+        assert.equal(profile.lastSessionScore, 0);
+        assert.deepEqual(Object.values(profile.skills), [0, 0, 0, 0, 0, 0, 0]);
     });
 
     test("Overall score should be average of sub-skills", () => {

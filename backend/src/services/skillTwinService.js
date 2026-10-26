@@ -8,6 +8,14 @@ const SKILL_KEYS = [
     "evacuationSkill", "emergencyResponse", "communication", "teamwork"
 ];
 
+function timestampMillis(value) {
+    if (value && typeof value.toDate === "function") {
+        return value.toDate().getTime();
+    }
+    const timestamp = new Date(value).getTime();
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 class SkillTwinService {
     constructor(database = db) {
         this.db = database;
@@ -95,21 +103,21 @@ class SkillTwinService {
         const doc = await this.db.collection("skillProfiles").doc(traineeId).get();
         if (!doc.exists) {
             const defaultSkills = {
-                decisionMaking: 50,
-                situationalAwareness: 50,
-                safetyAwareness: 50,
-                evacuationSkill: 50,
-                emergencyResponse: 50,
-                communication: 50,
-                teamwork: 50
+                decisionMaking: 0,
+                situationalAwareness: 0,
+                safetyAwareness: 0,
+                evacuationSkill: 0,
+                emergencyResponse: 0,
+                communication: 0,
+                teamwork: 0
             };
             return {
                 traineeId,
                 skills: defaultSkills,
-                overallScore: 50,
+                overallScore: 0,
                 trainingCount: 0,
                 trend: TRENDS.STABLE,
-                lastSessionScore: 50,
+                lastSessionScore: 0,
                 lastUpdated: null
             };
         }
@@ -118,13 +126,13 @@ class SkillTwinService {
         // Support legacy flat format or structured format seamlessly
         if (!data.skills && data.decisionMaking !== undefined) {
             data.skills = {
-                decisionMaking: data.decisionMaking || 50,
-                situationalAwareness: data.situationalAwareness || 50,
-                safetyAwareness: data.safetyAwareness || 50,
-                evacuationSkill: data.evacuationSkill || 50,
-                emergencyResponse: data.emergencyResponse || 50,
-                communication: data.communication || 50,
-                teamwork: data.teamwork || 50
+                decisionMaking: data.decisionMaking ?? 0,
+                situationalAwareness: data.situationalAwareness ?? 0,
+                safetyAwareness: data.safetyAwareness ?? 0,
+                evacuationSkill: data.evacuationSkill ?? 0,
+                emergencyResponse: data.emergencyResponse ?? 0,
+                communication: data.communication ?? 0,
+                teamwork: data.teamwork ?? 0
             };
         }
         return { traineeId: doc.id, ...data };
@@ -171,13 +179,13 @@ class SkillTwinService {
                         : []
             );
             const updatedSkills = {
-                decisionMaking: 50,
-                situationalAwareness: 50,
-                safetyAwareness: 50,
-                evacuationSkill: 50,
-                emergencyResponse: 50,
-                communication: 50,
-                teamwork: 50,
+                decisionMaking: 0,
+                situationalAwareness: 0,
+                safetyAwareness: 0,
+                evacuationSkill: 0,
+                emergencyResponse: 0,
+                communication: 0,
+                teamwork: 0,
                 ...currentSkills
             };
 
@@ -242,23 +250,89 @@ class SkillTwinService {
             history.push({ id: doc.id, ...doc.data() });
         });
 
-        history.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        history.sort((a, b) => timestampMillis(a.createdAt) - timestampMillis(b.createdAt));
         return history;
+    }
+
+    async ensureSkillTwinFromCompletedSessions(traineeId) {
+        const sessionsSnapshot = await this.db.collection("trainingSessions")
+            .where("traineeId", "==", traineeId)
+            .where("status", "==", "completed")
+            .get();
+        const sessions = [];
+        sessionsSnapshot.forEach(doc => {
+            sessions.push({ id: doc.id, ...doc.data() });
+        });
+        sessions.sort((a, b) =>
+            timestampMillis(a.completedAt || a.createdAt) -
+            timestampMillis(b.completedAt || b.createdAt)
+        );
+
+        const history = await this.getSkillHistory(traineeId);
+        const processedSessionIds = new Set(history.map(record => record.sessionId));
+        const profileRef = this.db.collection("skillProfiles").doc(traineeId);
+        const profileDoc = await profileRef.get();
+
+        if (!profileDoc.exists && history.length > 0) {
+            const latest = history[history.length - 1];
+            const observedSkillDimensions = [...new Set(history.flatMap(record =>
+                Array.isArray(record.observedSkillDimensions)
+                    ? record.observedSkillDimensions
+                    : []
+            ))].filter(key => SKILL_KEYS.includes(key));
+            const observedScores = observedSkillDimensions
+                .map(key => latest.skills?.[key])
+                .filter(score => typeof score === "number" && Number.isFinite(score));
+            await profileRef.set({
+                traineeId,
+                skills: latest.skills || {},
+                observedSkillDimensions,
+                overallScore: observedScores.length > 0
+                    ? Math.round(observedScores.reduce((total, score) => total + score, 0) / observedScores.length)
+                    : null,
+                trainingCount: history.length,
+                trend: this.calculateSkillTrend(history),
+                lastSessionScore: latest.overallScore ?? null,
+                lastUpdated: latest.createdAt || FieldValue.serverTimestamp()
+            });
+        }
+
+        const eventService = require("./eventService");
+        const performanceFeatureService = require("./performanceFeatureService");
+        for (const session of sessions) {
+            if (processedSessionIds.has(session.id)) continue;
+
+            let features = session.performanceFeatures;
+            if (!features) {
+                const events = await eventService.getAllEventsForSession(session.id);
+                if (events.length === 0) continue;
+                features = performanceFeatureService.extractFeatures(session, events);
+            }
+
+            if (this.calculateSessionSkillScores(features).observedSkillDimensions.length === 0) {
+                continue;
+            }
+
+            await this.updateSkillTwin(traineeId, session.id, features);
+            processedSessionIds.add(session.id);
+        }
+
+        return this.getSkillTwin(traineeId);
     }
 
     async getSkillProgress(traineeId) {
         const currentProfile = await this.getSkillTwin(traineeId);
         const history = await this.getSkillHistory(traineeId);
 
-        let previousScore = 50;
-        let currentScore = currentProfile.overallScore ?? 50;
+        let previousScore = 0;
+        let currentScore = currentProfile.overallScore ?? 0;
 
         if (history.length >= 2) {
-            previousScore = history[history.length - 2].overallScore ?? 50;
+            previousScore = history[history.length - 2].overallScore ?? 0;
             currentScore = history[history.length - 1].overallScore ?? currentScore;
         } else if (history.length === 1) {
-            previousScore = 50;
-            currentScore = history[0].overallScore || currentScore;
+            previousScore = 0;
+            currentScore = history[0].overallScore ?? currentScore;
         }
 
         const improvement = currentScore - previousScore;
@@ -279,7 +353,7 @@ class SkillTwinService {
             const currSkills = history[history.length - 1].skills || {};
 
             observedDimensions.forEach(k => {
-                const diff = (currSkills[k] ?? 50) - (prevSkills[k] ?? 50);
+                const diff = (currSkills[k] ?? 0) - (prevSkills[k] ?? 0);
                 if (diff > 3) dimensionTrends[k] = TRENDS.IMPROVING;
                 else if (diff < -3) dimensionTrends[k] = TRENDS.DECLINING;
                 else dimensionTrends[k] = TRENDS.STABLE;
@@ -304,8 +378,8 @@ class SkillTwinService {
         }
 
         const recent = historySnapshots.slice(-3);
-        const first = recent[0].overallScore ?? 50;
-        const last = recent[recent.length - 1].overallScore ?? 50;
+        const first = recent[0].overallScore ?? 0;
+        const last = recent[recent.length - 1].overallScore ?? 0;
         const diff = last - first;
 
         if (diff > 3) return TRENDS.IMPROVING;
@@ -329,18 +403,18 @@ class SkillTwinService {
         let profile = {
             traineeId,
             skills: {
-                decisionMaking: 50,
-                situationalAwareness: 50,
-                safetyAwareness: 50,
-                evacuationSkill: 50,
-                emergencyResponse: 50,
-                communication: 50,
-                teamwork: 50
+                decisionMaking: 0,
+                situationalAwareness: 0,
+                safetyAwareness: 0,
+                evacuationSkill: 0,
+                emergencyResponse: 0,
+                communication: 0,
+                teamwork: 0
             },
-            overallScore: 50,
+            overallScore: 0,
             trainingCount: 0,
             trend: TRENDS.STABLE,
-            lastSessionScore: 50,
+            lastSessionScore: 0,
             lastUpdated: FieldValue.serverTimestamp()
         };
 

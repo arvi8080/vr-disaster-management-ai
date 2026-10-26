@@ -5,6 +5,7 @@ const { ERROR_CODES, ROLES } = require("../utils/constants");
 class SkillTwinController {
     async getMe(req, res, next) {
         try {
+            await skillTwinService.ensureSkillTwinFromCompletedSessions(req.user.uid);
             const profile = await skillTwinService.getSkillTwin(req.user.uid);
             return sendSuccess(res, profile, "Digital Skill Twin profile retrieved successfully");
         } catch (error) {
@@ -14,6 +15,7 @@ class SkillTwinController {
 
     async getMyHistory(req, res, next) {
         try {
+            await skillTwinService.ensureSkillTwinFromCompletedSessions(req.user.uid);
             const history = await skillTwinService.getSkillHistory(req.user.uid);
             return sendSuccess(res, history, "My skill twin training history retrieved successfully");
         } catch (error) {
@@ -23,6 +25,7 @@ class SkillTwinController {
 
     async getMyProgress(req, res, next) {
         try {
+            await skillTwinService.ensureSkillTwinFromCompletedSessions(req.user.uid);
             const progress = await skillTwinService.getSkillProgress(req.user.uid);
             return sendSuccess(res, progress, "My skill twin progress and trends retrieved successfully");
         } catch (error) {
@@ -39,6 +42,7 @@ class SkillTwinController {
                 return sendError(res, "Access denied", ERROR_CODES.FORBIDDEN, 403);
             }
 
+            await skillTwinService.ensureSkillTwinFromCompletedSessions(traineeId);
             const profile = await skillTwinService.getSkillTwin(traineeId);
             return sendSuccess(res, profile);
         } catch (error) {
@@ -54,6 +58,7 @@ class SkillTwinController {
                 return sendError(res, "Access denied", ERROR_CODES.FORBIDDEN, 403);
             }
 
+            await skillTwinService.ensureSkillTwinFromCompletedSessions(traineeId);
             const history = await skillTwinService.getSkillHistory(traineeId);
             return sendSuccess(res, history, "Skill twin training history retrieved successfully");
         } catch (error) {
@@ -78,4 +83,3 @@ class SkillTwinController {
 }
 
 module.exports = new SkillTwinController();
-

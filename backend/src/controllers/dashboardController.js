@@ -96,7 +96,7 @@ class DashboardController {
                     latestScore
                 },
                 skills: skillTwin.skills || {},
-                overallScore: skillTwin.overallScore ?? 50,
+                overallScore: skillTwin.overallScore ?? 0,
                 trends: {
                     overall: progress.trend,
                     dimensionTrends: progress.dimensionTrends

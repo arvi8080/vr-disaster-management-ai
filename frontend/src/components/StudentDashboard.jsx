@@ -7,6 +7,7 @@ import { fetchScenarios } from '../services/scenarioService';
 import { fetchAllMySessions, fetchAssignmentsForMe, fetchMySessions } from '../services/trainingService';
 import { analyzeTrainingSession } from '../services/aiService';
 import ThemeToggle from './ThemeToggle';
+import { formatEventDate, formatReportDate, timestampMillis } from '../utils/reportDate';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -16,16 +17,6 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   })[character]);
-}
-
-function formatReportDate(value) {
-  const timestamp = value?._seconds
-    ? value._seconds * 1000
-    : typeof value?.toDate === 'function'
-      ? value.toDate().getTime()
-      : value;
-  const date = new Date(timestamp);
-  return value && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Date unavailable';
 }
 
 function csvCell(value) {
@@ -59,13 +50,6 @@ function formatActionDuration(value, actionResult) {
   return formatSeconds(value);
 }
 
-function timestampMillis(value) {
-  if (value?._seconds) return value._seconds * 1000;
-  if (typeof value?.toDate === 'function') return value.toDate().getTime();
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-}
-
 function getUnityEvents(session) {
   return Array.isArray(session.performanceFeatures?.events)
     ? session.performanceFeatures.events
@@ -84,12 +68,31 @@ function getProcedureSequence(session) {
   const events = getUnityEvents(session);
   const actionTypes = ['POWER_ISOLATED', 'EXTINGUISHER_PIN_REMOVED', 'EXTINGUISHING_STARTED'];
   const actionEvents = actionTypes.map(eventType => events.find(event => event.eventType === eventType));
-  if (actionEvents.some(event => !event || !event.timestamp)) return 'Unknown / not assessed';
-  const timestamps = actionEvents.map(event => new Date(event.timestamp).getTime());
-  if (timestamps.some(timestamp => !Number.isFinite(timestamp))) return 'Unknown / not assessed';
+  if (actionEvents.some(event => !event)) return 'Unknown / not assessed';
+  const timestamps = actionEvents.map(event => timestampMillis(event.timestamp));
+  if (timestamps.some(timestamp => timestamp === 0)) return 'Unknown / not assessed';
   return timestamps[0] < timestamps[1] && timestamps[1] < timestamps[2]
     ? 'Correct sequence recorded'
     : 'Out of sequence';
+}
+
+function getObservedSequenceDetail(session) {
+  const events = getUnityEvents(session);
+  const eventTime = eventType => timestampMillis(events.find(event => event.eventType === eventType)?.timestamp);
+  const powerTime = eventTime('POWER_ISOLATED');
+  const pinTime = eventTime('EXTINGUISHER_PIN_REMOVED');
+  const startTime = eventTime('EXTINGUISHING_STARTED');
+
+  if (powerTime > 0 && pinTime > 0 && pinTime < powerTime) {
+    return 'Recorded action order: pin removal occurred before power isolation.';
+  }
+  if (pinTime > 0 && startTime > 0 && startTime < pinTime) {
+    return 'Recorded action order: extinguishing began before pin removal.';
+  }
+  if (powerTime > 0 && startTime > 0 && startTime < powerTime) {
+    return 'Recorded action order: extinguishing began before power isolation.';
+  }
+  return null;
 }
 
 function getAttemptNumber(sessions, session) {
@@ -168,7 +171,7 @@ function getFeedbackEvidence(session, text) {
   if (lowerText.includes('procedur')) {
     const violations = getUnityEvents(session).filter(event => event.eventType === 'SAFETY_VIOLATION');
     return violations.length
-      ? violations.map(event => `SAFETY_VIOLATION${event.timestamp ? ` at ${formatReportDate(event.timestamp)}` : ''}`).join('; ')
+      ? violations.map(event => `SAFETY_VIOLATION${event.timestamp !== undefined && event.timestamp !== null ? ` at ${formatEventDate(event.timestamp)}` : ''}`).join('; ')
       : `procedureViolation=${session.procedureViolation ?? 'unknown'}`;
   }
   return 'No specific recorded event was available.';
@@ -278,7 +281,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           Number.isFinite(session.safetyViolations)
             ? Math.max(session.safetyViolations, events.filter(event => event.eventType === 'SAFETY_VIOLATION').length)
             : events.filter(event => event.eventType === 'SAFETY_VIOLATION').length || 'Unknown',
-          events.map(event => `${event.eventType}${event.timestamp ? ` @ ${formatReportDate(event.timestamp)}` : ''}`).join('; ') || 'No event history recorded'
+          events.map(event => `${event.eventType}${event.timestamp !== undefined && event.timestamp !== null ? ` @ ${formatEventDate(event.timestamp)}` : ''}`).join('; ') || 'No event history recorded'
         ]);
       });
 
@@ -334,15 +337,11 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           ? Math.max(session.safetyViolations, violations.length)
           : violations.length || (session.procedureViolation === true ? 1 : null);
         const violationList = violations.map(event => {
-          const action = event.metadata?.action || 'Action not captured';
-          const time = event.timestamp ? formatReportDate(event.timestamp) : 'Timestamp unavailable';
-          const startEvent = events.find(item => item.eventType === 'EXTINGUISHING_STARTED');
-          const powerEvent = events.find(item => item.eventType === 'POWER_ISOLATED');
-          const sprayBeforePower = startEvent?.timestamp && powerEvent?.timestamp
-            && new Date(startEvent.timestamp) < new Date(powerEvent.timestamp);
-          const reason = sprayBeforePower
-            ? 'Extinguishing started before power isolation was recorded.'
-            : 'The specific unsafe action or rule was not captured.';
+          const action = event.metadata?.action || 'Safety violation recorded; specific action not provided';
+          const time = formatEventDate(event.timestamp);
+          const reason = event.metadata?.reason
+            || getObservedSequenceDetail(session)
+            || 'Unity recorded a safety violation but did not provide its specific cause.';
           return `<li>${escapeHtml(action)} — ${escapeHtml(time)}. ${escapeHtml(reason)}</li>`;
         }).join('');
         const objectiveSequence = getProcedureSequence(session);
@@ -359,7 +358,7 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
         const practiceItems = feedback.practice
           .map(item => `<li><strong>Recommendation:</strong> ${escapeHtml(item)} <strong>Evidence basis:</strong> ${escapeHtml(getFeedbackEvidence(session, item))}</li>`)
           .join('');
-        const eventRows = events.map(event => `<li>${escapeHtml(event.eventType)} — ${escapeHtml(event.timestamp ? formatReportDate(event.timestamp) : 'Timestamp unavailable')}</li>`).join('');
+        const eventRows = events.map(event => `<li>${escapeHtml(event.eventType)} — ${escapeHtml(formatEventDate(event.timestamp))}</li>`).join('');
         const duration = session.unityMetrics?.totalResponseTime ?? session.duration;
         const initialLabel = attempt === 1 ? 'Initial assessment (first attempt)' : `Attempt ${attempt}`;
         const status = getSessionStatus(session);

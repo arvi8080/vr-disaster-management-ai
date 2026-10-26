@@ -253,7 +253,13 @@ export default function SkillTwinPanel({ user }) {
     if (!user) return;
 
     let active = true;
-    Promise.allSettled([fetchMySkillTwin(), fetchMySkillTwinHistory(), fetchMyFeedback(), fetchMySessions()]).then(([skillResult, historyResult, feedbackResult, sessionsResult]) => {
+    async function loadSkillTwin() {
+      const [sessionsResult] = await Promise.allSettled([fetchMySessions()]);
+      const [skillResult, historyResult, feedbackResult] = await Promise.allSettled([
+        fetchMySkillTwin(),
+        fetchMySkillTwinHistory(),
+        fetchMyFeedback()
+      ]);
       if (!active) return;
       if (skillResult.status === 'fulfilled') setSkillTwin(skillResult.value);
       else setSkillError(true);
@@ -264,7 +270,8 @@ export default function SkillTwinPanel({ user }) {
       if (sessionsResult.status === 'fulfilled' && Array.isArray(sessionsResult.value)) setTrainingSessions(sessionsResult.value);
       else if (sessionsResult.status === 'rejected') setSessionsError(true);
       setLoading(false);
-    });
+    }
+    loadSkillTwin();
 
     return () => { active = false; };
   }, [user]);

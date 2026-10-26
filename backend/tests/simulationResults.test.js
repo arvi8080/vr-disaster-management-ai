@@ -209,6 +209,38 @@ describe("Unity simulation result access", () => {
         assert.deepEqual(profile.data().observedSkillDimensions, ["decisionMaking", "safetyAwareness"]);
     });
 
+    test("backfills a Skill Twin from previously completed sessions exactly once", async () => {
+        const platformDb = createMemoryFirestore();
+        await platformDb.collection("trainingSessions").doc("completed-session").set({
+            traineeId: "platform-user-123",
+            status: "completed",
+            completedAt: new Date("2026-10-04T10:00:00Z"),
+            performanceFeatures: {
+                skillScores: {
+                    decisionMaking: 82,
+                    safetyAwareness: 94
+                }
+            }
+        });
+        await platformDb.collection("trainingSessions").doc("telemetry-only-session").set({
+            traineeId: "platform-user-123",
+            status: "completed",
+            performanceFeatures: {
+                source: "unity-simulation",
+                skillScores: {}
+            }
+        });
+        const service = new SkillTwinService(platformDb);
+
+        const profile = await service.ensureSkillTwinFromCompletedSessions("platform-user-123");
+        await service.ensureSkillTwinFromCompletedSessions("platform-user-123");
+
+        assert.equal(profile.trainingCount, 1);
+        assert.equal(profile.overallScore, 88);
+        assert.equal(platformDb.count("skillHistory"), 1);
+        assert.deepEqual(profile.observedSkillDimensions, ["decisionMaking", "safetyAwareness"]);
+    });
+
     test("imports a completed Unity simulation idempotently using simulationId as the stable key", async () => {
         const platformDb = createMemoryFirestore();
         const calls = { skillTwin: 0, feedback: 0 };
@@ -572,6 +604,28 @@ function createMemoryFirestore() {
         return collections.get(name);
     };
 
+    const createQuery = (collectionName, constraints = []) => ({
+        where(field, operator, value) {
+            const constraint = arguments.length === 2
+                ? [field, "==", operator]
+                : [field, operator, value];
+            return createQuery(collectionName, [...constraints, constraint]);
+        },
+        async get() {
+            const docs = [...getCollection(collectionName).entries()]
+                .filter(([, data]) => constraints.every(([field, operator, value]) =>
+                    operator === "==" && data[field] === value
+                ))
+                .map(([id, data]) => ({ id, data: () => data }));
+            return {
+                docs,
+                forEach(callback) {
+                    docs.forEach(callback);
+                }
+            };
+        }
+    });
+
     const createReference = (collectionName, documentId) => ({
         id: documentId,
         collectionName,
@@ -595,21 +649,7 @@ function createMemoryFirestore() {
         collection(name) {
             return {
                 doc: documentId => createReference(name, documentId),
-                where(field, value) {
-                    return {
-                        async get() {
-                            const docs = [...getCollection(name).entries()]
-                                .filter(([, data]) => data[field] === value)
-                                .map(([id, data]) => ({ id, data: () => data }));
-                            return {
-                                docs,
-                                forEach(callback) {
-                                    docs.forEach(callback);
-                                }
-                            };
-                        }
-                    };
-                }
+                where: (field, operator, value) => createQuery(name).where(field, operator, value)
             };
         },
         async runTransaction(callback) {
