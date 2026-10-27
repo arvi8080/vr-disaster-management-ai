@@ -46,4 +46,8 @@ curl.exe -I http://localhost:8080/dashboard
 
 If the site is behind another reverse proxy, ensure that proxy forwards `/dashboard` requests to the frontend container rather than the backend API.
 
+## Vercel deployment
+
+For Vercel deployments, set the project root directory to `frontend`. The `frontend/vercel.json` rewrite sends client-side routes such as `/dashboard`, `/login`, and `/signup` to the SPA entry point so reloading those URLs does not return Vercel's 404 page. Redeploy after changing the rewrite configuration.
+
 In Unity, set the Firebase Web API key on the `FirebaseRestClient` component in the Inspector and restrict it in Google Cloud. The key is extractable from a client build; do not treat it as a private credential or commit scenes containing it.
