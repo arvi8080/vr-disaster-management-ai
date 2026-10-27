@@ -114,13 +114,7 @@ export default function Navbar({ onNavigate, currentPath, user, onLogout, theme,
               >
                 Login
               </button>
-              <button
-                onClick={() => onNavigate('/signup')}
-                className="px-5 py-2.5 rounded-xl bg-[#f95738] hover:bg-[#e04729] text-white font-semibold text-xs tracking-wide shadow-md shadow-orange-500/20 transition-all flex items-center gap-1.5 group"
-              >
-                <span>Sign Up</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-              </button>
+
             </>
           )}
         </div>

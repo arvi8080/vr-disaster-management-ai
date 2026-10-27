@@ -22,13 +22,30 @@ class SkillTwinService {
                     .map(([name, score]) => [name, Math.round(score)])
             );
             const values = Object.values(skills);
-            return {
-                skills,
-                observedSkillDimensions: Object.keys(skills),
-                overallScore: values.length > 0
-                    ? Math.round(values.reduce((total, score) => total + score, 0) / values.length)
-                    : null
-            };
+            if (values.length > 0) {
+                return {
+                    skills,
+                    observedSkillDimensions: Object.keys(skills),
+                    overallScore: Math.round(values.reduce((total, score) => total + score, 0) / values.length)
+                };
+            }
+
+            if (features.source === "unity-simulation") {
+                return { skills: {}, observedSkillDimensions: [], overallScore: null };
+            }
+        }
+
+        const legacyScoringFields = [
+            "decisionAccuracy", "wrongDecisions", "hazardsDetected", "hazardsIgnored",
+            "averageReactionTime", "safetyViolations", "routeEfficiency", "evacuationTime",
+            "victimsRescued", "objectivesCompleted", "reactionTime", "communicationActions",
+            "teamworkActions"
+        ];
+        const hasLegacyScoringEvidence = legacyScoringFields.some(name =>
+            typeof features[name] === "number" && Number.isFinite(features[name])
+        );
+        if (!hasLegacyScoringEvidence) {
+            return { skills: {}, observedSkillDimensions: [], overallScore: null };
         }
 
         // 1. Decision Making (0-100)

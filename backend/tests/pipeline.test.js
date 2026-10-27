@@ -3,9 +3,111 @@ const assert = require("node:assert");
 const performanceFeatureService = require("../src/services/performanceFeatureService");
 const skillTwinService = require("../src/services/skillTwinService");
 const feedbackService = require("../src/services/feedbackService");
+const {
+    getObservedSessionScore,
+    getSavedAiSessionScores,
+    getLatestSavedAiScore
+} = require("../src/utils/scoring");
 const { TRENDS } = require("../src/utils/constants");
 
 describe("Research Data Pipeline Integration Tests", () => {
+    test("uses only saved AI evaluations for completed sessions", () => {
+        const scores = getSavedAiSessionScores(
+            [{ id: "session-1" }, { id: "session-2" }],
+            [
+                { sessionId: "session-1", type: "AI", performanceScore: 76, createdAt: "2026-10-01T10:00:00Z" },
+                { sessionId: "session-1", type: "AI", performanceScore: 84, createdAt: "2026-10-02T10:00:00Z" },
+                { sessionId: "session-2", type: "UNITY_TELEMETRY", performanceScore: 99 },
+                { sessionId: "session-3", type: "AI", performanceScore: 100 },
+                { sessionId: "session-2", type: "AI", performanceScore: 101 }
+            ]
+        );
+
+        assert.deepEqual([...scores], [["session-1", 84]]);
+    });
+
+    test("selects the most recently evaluated completed session, not the latest completed session", () => {
+        const score = getLatestSavedAiScore(
+            [{ id: "newer-session" }, { id: "older-session" }],
+            [
+                { sessionId: "older-session", type: "AI", performanceScore: 63.8, createdAt: "2026-10-27T09:00:00Z" },
+                { sessionId: "newer-session", type: "AI", performanceScore: 24.5, createdAt: "2026-10-26T09:00:00Z" },
+                { sessionId: "older-session", type: "UNITY_TELEMETRY", performanceScore: 99, createdAt: "2026-10-28T09:00:00Z" }
+            ]
+        );
+
+        assert.equal(score, 63.8);
+    });
+
+    test("scores completed sessions from recorded objectives, decisions, and safety evidence", () => {
+        const score = getObservedSessionScore({
+            score: null,
+            performanceFeatures: {
+                objectiveFlags: {
+                    powerWasTurnedOff: true,
+                    pinWasRemoved: true,
+                    fireWasExtinguished: false
+                },
+                correctDecisions: 2,
+                wrongDecisions: 1,
+                safetyViolations: 1
+            }
+        });
+
+        assert.equal(score, 71);
+    });
+
+    test("analyzes legacy Unity objective flags saved on the session", () => {
+        const score = getObservedSessionScore({
+            status: "completed",
+            score: null,
+            powerWasTurnedOff: true,
+            pinWasRemoved: false,
+            fireWasExtinguished: true,
+            performanceFeatures: {
+                source: "unity-simulation",
+                skillScores: {},
+                objectiveFlags: {}
+            }
+        });
+
+        assert.equal(score, 67);
+    });
+
+    test("does not turn missing Unity telemetry into a score", () => {
+        const score = getObservedSessionScore({
+            score: null,
+            performanceFeatures: {
+                source: "unity-simulation",
+                skillScores: {},
+                decisionAccuracy: null,
+                objectiveCompletionRate: null,
+                safetyViolations: null
+            }
+        });
+
+        assert.equal(score, null);
+    });
+
+    test("does not use a default decision accuracy when no decisions were recorded", () => {
+        const score = getObservedSessionScore({
+            score: null,
+            performanceFeatures: {
+                correctDecisions: 0,
+                wrongDecisions: 0,
+                decisionAccuracy: 100,
+                safetyViolations: null
+            }
+        });
+
+        assert.equal(score, null);
+    });
+
+    test("uses a saved score when no component evidence is available", () => {
+        assert.equal(getObservedSessionScore({ score: 76 }), 76);
+        assert.equal(getObservedSessionScore({ score: 101 }), null);
+    });
+
     test("performanceFeatureService extracts all 17 features correctly from raw events", () => {
         const mockSession = {
             duration: 120,

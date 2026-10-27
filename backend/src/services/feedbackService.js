@@ -189,7 +189,7 @@ class FeedbackService {
         const record = {
             traineeId: feedbackData.traineeId,
             sessionId: feedbackData.sessionId || null,
-            performanceScore: feedbackData.performanceScore || 75,
+            performanceScore: feedbackData.performanceScore ?? 75,
             riskLevel: feedbackData.riskLevel || "LOW",
             type: feedbackData.type || "AI",
             message: feedbackData.message || "",

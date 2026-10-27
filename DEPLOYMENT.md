@@ -30,4 +30,20 @@ docker compose down
 
 The frontend image uses `VITE_API_URL=http://localhost:5000/api` at build time. Override the Compose build argument when using different local ports or a reachable backend URL.
 
+## Refreshing a dashboard route
+
+The frontend Nginx configuration serves the React app for `/dashboard`, `/login`, and `/signup`, including direct browser refreshes. After changing frontend routing or Nginx configuration, rebuild and recreate the frontend container:
+
+```powershell
+docker compose up -d --build --force-recreate frontend
+```
+
+Verify the dashboard route serves the app entry point (HTTP 200), not an Nginx 404:
+
+```powershell
+curl.exe -I http://localhost:8080/dashboard
+```
+
+If the site is behind another reverse proxy, ensure that proxy forwards `/dashboard` requests to the frontend container rather than the backend API.
+
 In Unity, set the Firebase Web API key on the `FirebaseRestClient` component in the Inspector and restrict it in Google Cloud. The key is extractable from a client build; do not treat it as a private credential or commit scenes containing it.

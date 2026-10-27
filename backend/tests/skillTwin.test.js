@@ -25,4 +25,47 @@ describe("Digital Skill Twin Calculation Tests", () => {
         
         assert.strictEqual(overall, 80);
     });
+
+    test("legacy scored features still generate a Skill Twin when skillScores is empty", () => {
+        const service = new SkillTwinService({});
+
+        const result = service.calculateSessionSkillScores({
+            skillScores: {},
+            decisionAccuracy: 80,
+            safetyViolations: 1
+        });
+
+        assert.equal(result.observedSkillDimensions.length, 7);
+        assert.equal(result.skills.decisionMaking, 80);
+        assert.equal(result.skills.safetyAwareness, 80);
+    });
+
+    test("does not infer Skill Twin scores from Unity telemetry with empty skillScores", () => {
+        const service = new SkillTwinService({});
+
+        const result = service.calculateSessionSkillScores({
+            source: "unity-simulation",
+            skillScores: {},
+            decisionAccuracy: 80,
+            safetyViolations: 1
+        });
+
+        assert.deepEqual(result, {
+            skills: {},
+            observedSkillDimensions: [],
+            overallScore: null
+        });
+    });
+
+    test("does not create Skill Twin scores when legacy scoring evidence is absent", () => {
+        const service = new SkillTwinService({});
+
+        const result = service.calculateSessionSkillScores({ skillScores: {} });
+
+        assert.deepEqual(result, {
+            skills: {},
+            observedSkillDimensions: [],
+            overallScore: null
+        });
+    });
 });

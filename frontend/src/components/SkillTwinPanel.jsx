@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, Brain, RefreshCw } from 'lucide-react';
 import { fetchMySkillTwin, fetchMySkillTwinHistory } from '../services/skillTwinService';
 import { fetchMyFeedback } from '../services/feedbackService';
-import { fetchMySessions } from '../services/trainingService';
+import { fetchAllMySessions } from '../services/trainingService';
 import { formatEventDate, reportDate } from '../utils/reportDate';
 
 const SKILL_LABELS = {
@@ -12,11 +12,87 @@ const SKILL_LABELS = {
   evacuationSkill: 'Evacuation Skill',
   emergencyResponse: 'Emergency Response',
   communication: 'Communication',
-  teamwork: 'Teamwork'
+  teamwork: 'Teamwork',
+  objectiveCompletion: 'Objective Completion',
+  decisionAccuracy: 'Decision Accuracy',
+  safetyCompliance: 'Safety Compliance',
+  sessionScore: 'Recorded Session Score'
 };
 
+function getRecordedPerformanceIndicators(sessions) {
+  const completedSessions = sessions.filter(session => session.status?.toLowerCase() === 'completed');
+  const measures = {
+    objectiveCompletion: [],
+    decisionAccuracy: [],
+    safetyCompliance: [],
+    sessionScore: []
+  };
+
+  completedSessions.forEach(session => {
+    const features = session.performanceFeatures || {};
+    const flags = {
+      ...(features.objectiveFlags || {}),
+      ...(typeof session.powerWasTurnedOff === 'boolean' ? { powerWasTurnedOff: session.powerWasTurnedOff } : {}),
+      ...(typeof session.pinWasRemoved === 'boolean' ? { pinWasRemoved: session.pinWasRemoved } : {}),
+      ...(typeof session.fireWasExtinguished === 'boolean' ? { fireWasExtinguished: session.fireWasExtinguished } : {})
+    };
+    const objectiveResults = Object.values(flags).filter(value => typeof value === 'boolean');
+    if (objectiveResults.length > 0) {
+      measures.objectiveCompletion.push(
+        (objectiveResults.filter(Boolean).length / objectiveResults.length) * 100
+      );
+    } else {
+      const objectiveRate = features.objectiveCompletionRate;
+      if (
+        typeof objectiveRate === 'number' && Number.isFinite(objectiveRate) &&
+        objectiveRate >= 0 && objectiveRate <= 100 &&
+        (objectiveRate > 0 || session.actionsCompleted > 0 || features.eventCount > 0)
+      ) {
+        measures.objectiveCompletion.push(objectiveRate);
+      }
+    }
+
+    const correct = features.correctDecisions;
+    const incorrect = features.wrongDecisions;
+    if (
+      typeof correct === 'number' && Number.isFinite(correct) &&
+      typeof incorrect === 'number' && Number.isFinite(incorrect) &&
+      correct + incorrect > 0
+    ) {
+      measures.decisionAccuracy.push((correct / (correct + incorrect)) * 100);
+    }
+
+    const violationCount = typeof features.safetyViolations === 'number' && features.safetyViolations >= 0
+      ? features.safetyViolations
+      : typeof session.safetyViolations === 'number' && session.safetyViolations >= 0
+        ? session.safetyViolations
+        : null;
+    if (
+      typeof session.procedureViolation === 'boolean' ||
+      (violationCount !== null &&
+        (violationCount > 0 || session.actionsCompleted > 0 || features.eventCount > 0))
+    ) {
+      const violations = session.procedureViolation === true
+        ? Math.max(1, violationCount || 0)
+        : violationCount || 0;
+      measures.safetyCompliance.push(Math.max(0, 100 - (violations * 20)));
+    }
+
+    if (typeof session.score === 'number' && Number.isFinite(session.score) && session.score >= 0 && session.score <= 100) {
+      measures.sessionScore.push(session.score);
+    }
+  });
+
+  return Object.entries(measures).map(([name, scores]) => [
+    name,
+    scores.length > 0
+      ? Math.round(scores.reduce((total, score) => total + score, 0) / scores.length)
+      : null
+  ]);
+}
+
 function getUnitySessionObservations(session) {
-  if (!session || session.sourceSystem !== 'unity') return [];
+  if (!session || (session.sourceSystem !== 'unity' && session.performanceFeatures?.source !== 'unity-simulation')) return [];
 
   const observations = [];
   const performance = session.performanceFeatures || {};
@@ -165,7 +241,7 @@ function SkillBarChart({ skills }) {
         className="h-auto min-w-[620px] w-full"
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`Digital Skill Twin bar chart with ${skills.length} skill scores out of 100`}
+        aria-label={`Performance bar chart with ${skills.length} indicators out of 100`}
       >
         {ticks.map(tick => {
           const x = padding.left + (tick / 100) * plotWidth;
@@ -188,7 +264,7 @@ function SkillBarChart({ skills }) {
         })}
         {skills.map(([name, score], index) => {
           const y = padding.top + (index * rowHeight);
-          const boundedScore = Math.max(0, Math.min(100, score));
+          const boundedScore = typeof score === 'number' ? Math.max(0, Math.min(100, score)) : 0;
           const label = SKILL_LABELS[name] || name.replace(/([A-Z])/g, ' $1');
           return (
             <g key={name}>
@@ -218,7 +294,7 @@ function SkillBarChart({ skills }) {
                 rx="6"
                 fill="var(--theme-brand)"
               >
-                <title>{`${label}: ${score} out of 100`}</title>
+                {score !== null ? <title>{`${label}: ${score} out of 100`}</title> : null}
               </rect>
               <text
                 x={width - padding.right + 10}
@@ -228,7 +304,7 @@ function SkillBarChart({ skills }) {
                 fontSize="12"
                 fontWeight="600"
               >
-                {score}
+                {score === null ? 'N/A' : score}
               </text>
             </g>
           );
@@ -255,7 +331,7 @@ export default function SkillTwinPanel({ user }) {
 
     let active = true;
     async function loadSkillTwin() {
-      const [sessionsResult] = await Promise.allSettled([fetchMySessions()]);
+      const [sessionsResult] = await Promise.allSettled([fetchAllMySessions()]);
       const [skillResult, historyResult, feedbackResult] = await Promise.allSettled([
         fetchMySkillTwin(),
         fetchMySkillTwinHistory(),
@@ -307,6 +383,19 @@ export default function SkillTwinPanel({ user }) {
       .filter(name => typeof profileSkills[name] === 'number' && Number.isFinite(profileSkills[name]) && profileSkills[name] >= 0 && profileSkills[name] <= 100)
       .map(name => [name, profileSkills[name]])
     : [];
+  const hasCompletedTraining = trainingSessions.some(session => session.status?.toLowerCase() === 'completed');
+  const recordedPerformanceIndicators = getRecordedPerformanceIndicators(trainingSessions);
+  const recordedUnitySessions = trainingSessions
+    .filter(session => session.status?.toLowerCase() === 'completed')
+    .map(session => ({
+      session,
+      observations: getUnitySessionObservations(session)
+    }))
+    .filter(item => item.observations.length > 0)
+    .sort((a, b) =>
+      (reportDate(b.session.completedAt || b.session.createdAt)?.getTime() || 0) -
+      (reportDate(a.session.completedAt || a.session.createdAt)?.getTime() || 0)
+    );
   const overallScore = skillTwin?.overallScore ?? latestSnapshot?.overallScore;
   const feedbackRecord = Array.isArray(feedback) ? feedback[0] : feedback;
   const isUnityFeedback = feedbackRecord?.type === 'UNITY_TELEMETRY' || feedbackRecord?.type === 'UNITY_RULES';
@@ -336,7 +425,11 @@ export default function SkillTwinPanel({ user }) {
       {skillError ? (
         <p role="alert" className="flex items-center gap-2 text-sm text-red-300"><AlertCircle className="h-4 w-4" />Skill Twin data is unavailable. Try again later.</p>
       ) : skills.length === 0 ? (
-        <p className="text-sm text-slate-400">No saved Skill Twin metrics yet. Complete a training session to populate your graph.</p>
+        <p className="text-sm text-slate-400">
+          {hasCompletedTraining
+            ? 'Your completed training is saved, but scoreable skill metrics are not available. Any recorded Unity objectives and telemetry are listed below; scores are not inferred.'
+            : 'No saved Skill Twin metrics yet. Complete a training session to populate your graph.'}
+        </p>
       ) : (
         <div>
           {overallScore !== undefined && overallScore !== null && <p className="text-sm text-slate-300">Overall score <strong className="ml-2 text-orange-300">{overallScore}</strong></p>}
@@ -348,6 +441,40 @@ export default function SkillTwinPanel({ user }) {
           <ProgressChart history={history} />
           {historyError && <p role="alert" className="mt-3 text-xs text-amber-300">Training history is unavailable, so the progress graph could not be loaded.</p>}
         </div>
+      )}
+
+      {recordedUnitySessions.length > 0 && (
+        <section className="border-t border-[#334155] pt-4">
+          <h3 className="mb-1 text-sm font-semibold text-slate-200">Recorded Unity objectives and telemetry</h3>
+          <p className="mb-3 text-xs text-slate-400">These are recorded results, not inferred Skill Twin scores.</p>
+          <div className="space-y-3">
+            {recordedUnitySessions.map(({ session, observations }) => (
+              <details key={session.id} className="rounded-lg border border-[#334155] bg-[#0a0910] p-3">
+                <summary className="cursor-pointer text-sm text-slate-200">
+                  {session.simulationType || session.scenario || 'Unity training'}
+                  <span className="ml-2 text-xs text-slate-400">
+                    {reportDate(session.completedAt || session.createdAt)?.toLocaleString() || 'Date unavailable'}
+                  </span>
+                </summary>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-300">
+                  {observations.map((item, index) => (
+                    <li key={`${session.id}-observation-${index}`}>{formatUnityObservation(item)}</li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hasCompletedTraining && (
+        <section className="border-t border-[#334155] pt-4">
+          <h3 className="mb-1 text-sm font-semibold text-slate-200">Recorded performance analysis</h3>
+          <p className="mb-3 text-xs text-slate-400">
+            Averages use completed sessions with recorded evidence. N/A means that indicator was not recorded.
+          </p>
+          <SkillBarChart skills={recordedPerformanceIndicators} />
+        </section>
       )}
 
       <div className="border-t border-[#334155] pt-4">

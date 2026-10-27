@@ -271,6 +271,27 @@ describe("Unity simulation result access", () => {
         assert.deepEqual(profile.observedSkillDimensions, ["decisionMaking", "safetyAwareness"]);
     });
 
+    test("backfills legacy completed sessions when stored skillScores is empty", async () => {
+        const platformDb = createMemoryFirestore();
+        await platformDb.collection("trainingSessions").doc("legacy-completed-session").set({
+            traineeId: "platform-user-123",
+            status: "completed",
+            performanceFeatures: {
+                skillScores: {},
+                decisionAccuracy: 82,
+                safetyViolations: 1
+            }
+        });
+        const service = new SkillTwinService(platformDb);
+
+        const profile = await service.ensureSkillTwinFromCompletedSessions("platform-user-123");
+
+        assert.equal(profile.trainingCount, 1);
+        assert.equal(profile.skills.decisionMaking, 82);
+        assert.equal(profile.skills.safetyAwareness, 80);
+        assert.equal(platformDb.count("skillHistory"), 1);
+    });
+
     test("imports a completed Unity simulation idempotently using simulationId as the stable key", async () => {
         const platformDb = createMemoryFirestore();
         const calls = { skillTwin: 0, feedback: 0 };

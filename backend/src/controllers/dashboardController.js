@@ -3,6 +3,7 @@ const skillTwinService = require("../services/skillTwinService");
 const { timestampMillis } = require("../utils/timestamp");
 const { sendSuccess } = require("../utils/response");
 const { ROLES, TRENDS } = require("../utils/constants");
+const { getSavedAiSessionScores, getLatestSavedAiScore } = require("../utils/scoring");
 
 async function getTrainerAssignedTrainees(database, trainerUid) {
     const [traineesSnapshot, trainerDoc] = await Promise.all([
@@ -61,32 +62,36 @@ class DashboardController {
 
             const completedSessions = sessions.filter(s => s.status === "completed");
             const totalSessions = sessions.length;
-            const scoredSessions = completedSessions.filter(s => typeof s.score === "number" && Number.isFinite(s.score));
-            const totalScore = scoredSessions.reduce((total, session) => total + session.score, 0);
-            const averageScore = scoredSessions.length > 0 ? Math.round(totalScore / scoredSessions.length) : 0;
+            const feedbackSnapshot = await db.collection("feedback")
+                .where("traineeId", "==", traineeId)
+                .get();
+            const feedbackRecords = [];
+            feedbackSnapshot.forEach(doc => feedbackRecords.push({ id: doc.id, ...doc.data() }));
+            const aiSessionScores = getSavedAiSessionScores(completedSessions, feedbackRecords);
+            const scoredSessions = completedSessions
+                .filter(session => aiSessionScores.has(session.id))
+                .map(session => ({ session, score: aiSessionScores.get(session.id) }));
+            const totalScore = scoredSessions.reduce((total, item) => total + item.score, 0);
+            const averageScore = scoredSessions.length > 0
+                ? Math.round(totalScore / scoredSessions.length)
+                : null;
 
             completedSessions.sort((a, b) =>
                 (timestampMillis(b.completedAt ?? b.createdAt) ?? 0) -
                 (timestampMillis(a.completedAt ?? a.createdAt) ?? 0)
             );
-            const latestScore = completedSessions.length > 0 && typeof completedSessions[0].score === "number"
-                ? completedSessions[0].score
-                : 0;
+            const latestScore = getLatestSavedAiScore(completedSessions, feedbackRecords);
 
             // Fetch Digital Skill Twin & Progress
             const skillTwin = await skillTwinService.getSkillTwin(traineeId);
             const progress = await skillTwinService.getSkillProgress(traineeId);
 
             // Fetch latest feedback
-            const feedbackSnapshot = await db.collection("feedback")
-                .where("traineeId", "==", traineeId)
-                .limit(1)
-                .get();
-
             let latestFeedback = null;
-            feedbackSnapshot.forEach(doc => {
-                latestFeedback = { id: doc.id, ...doc.data() };
-            });
+            feedbackRecords.sort((a, b) =>
+                (timestampMillis(b.createdAt) ?? 0) - (timestampMillis(a.createdAt) ?? 0)
+            );
+            if (feedbackRecords.length > 0) latestFeedback = feedbackRecords[0];
 
             const recommendations = latestFeedback && latestFeedback.recommendations
                 ? latestFeedback.recommendations
@@ -96,11 +101,12 @@ class DashboardController {
                 summary: {
                     totalSessions,
                     completedSessions: completedSessions.length,
+                    evaluatedSessions: scoredSessions.length,
                     averageScore,
                     latestScore
                 },
                 skills: skillTwin.skills || {},
-                overallScore: skillTwin.overallScore ?? 0,
+                overallScore: averageScore,
                 trends: {
                     overall: progress.trend,
                     dimensionTrends: progress.dimensionTrends

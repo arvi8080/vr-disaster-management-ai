@@ -608,9 +608,23 @@ export default function StudentDashboard({ user, onLogout, onNavigate, theme, on
           {activeTab === 'dashboard' && (
             <>
               <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-[#13111c] border border-[#27213b] rounded-xl p-5"><span className="text-xs text-slate-400">Overall score</span><p className="mt-2 text-2xl font-bold text-white">{liveMetrics?.overallScore ?? '—'}</p></div>
+                <div className="bg-[#13111c] border border-[#27213b] rounded-xl p-5"><span className="text-xs text-slate-400">Most recently evaluated score</span><p className="mt-2 text-2xl font-bold text-white">{liveMetrics?.summary?.latestScore !== undefined && liveMetrics?.summary?.latestScore !== null ? `${liveMetrics.summary.latestScore}/100` : '—'}</p></div>
                 <div className="bg-[#13111c] border border-[#27213b] rounded-xl p-5"><span className="text-xs text-slate-400">Completed sessions</span><p className="mt-2 text-2xl font-bold text-white">{liveMetrics?.summary?.completedSessions ?? '—'}</p></div>
-                <div className="bg-[#13111c] border border-[#27213b] rounded-xl p-5"><span className="text-xs text-slate-400">Average score</span><p className="mt-2 text-2xl font-bold text-white">{liveMetrics?.summary?.averageScore ?? '—'}</p></div>
+                <div className="bg-[#13111c] border border-[#27213b] rounded-xl p-5">
+                  <p className={`text-xs font-semibold ${
+                    liveMetrics?.summary?.latestScore === null || liveMetrics?.summary?.latestScore === undefined
+                      ? 'text-slate-400'
+                      : liveMetrics.summary.latestScore >= 40
+                        ? 'text-emerald-400'
+                        : 'text-amber-400'
+                  }`}>
+                    {liveMetrics?.summary?.latestScore === null || liveMetrics?.summary?.latestScore === undefined
+                      ? 'Pass mark: 40/100 · Not evaluated'
+                      : liveMetrics.summary.latestScore >= 40
+                        ? 'Pass mark: 40/100 · Passing'
+                        : 'Pass mark: 40/100 ·'}
+                  </p>
+                </div>
               </section>
               <section>
                 <div className="flex items-center justify-between mb-4">
